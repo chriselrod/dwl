@@ -14,10 +14,8 @@ DWLCFLAGS = `$(PKG_CONFIG) --cflags $(PKGS)` $(DWLCPPFLAGS) $(DWLDEVCFLAGS) $(CF
 LDLIBS    = `$(PKG_CONFIG) --libs $(PKGS)` $(LIBS)
 
 all: dwl
-dwl: dwl.o util.o
-	$(CC) dwl.o util.o $(LDLIBS) $(LDFLAGS) $(DWLCFLAGS) -o $@
-dwl.o: dwl.c config.mk config.h client.h xdg-shell-protocol.h wlr-layer-shell-unstable-v1-protocol.h
-util.o: util.c util.h
+dwl: dwl.c config.mk config.h client.h xdg-shell-protocol.h wlr-layer-shell-unstable-v1-protocol.h util.h
+	$(CC) dwl.c $(LDLIBS) $(LDFLAGS) $(DWLCFLAGS) -o $@
 
 # wayland-scanner is a tool which generates C headers and rigging for Wayland
 # protocols, which are specified in XML. wlroots requires you to rig these up
@@ -33,7 +31,7 @@ wlr-layer-shell-unstable-v1-protocol.h:
 		protocols/wlr-layer-shell-unstable-v1.xml $@
 
 config.h:
-	cp iconfig.def.h $@
+	cp config.def.h $@
 clean:
 	rm -f dwl *.o *-protocol.h
 
