@@ -33,7 +33,7 @@ wlr-layer-shell-unstable-v1-protocol.h:
 		protocols/wlr-layer-shell-unstable-v1.xml $@
 
 config.h:
-	cp config.def.h $@
+	cp iconfig.def.h $@
 clean:
 	rm -f dwl *.o *-protocol.h
 

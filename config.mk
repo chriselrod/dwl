@@ -1,6 +1,7 @@
 _VERSION = 0.4
 VERSION  = `git describe --tags --dirty 2>/dev/null || echo $(_VERSION)`
 
+CC = gcc
 PKG_CONFIG = pkg-config
 
 # paths

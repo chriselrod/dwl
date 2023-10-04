@@ -25,6 +25,7 @@ static const Rule rules[] = {
 /* layout(s) */
 static const Layout layouts[] = {
     /* symbol     arrange function */
+    {"[][]", column},
     {"[]=", tile},
     {"><>", NULL}, /* no layout function means floating behavior */
     {"[M]", monocle},
@@ -100,7 +101,7 @@ static const enum libinput_config_tap_button_map button_map =
     LIBINPUT_CONFIG_TAP_MAP_LRM;
 
 /* If you want to use the windows key for MODKEY, use WLR_MODIFIER_LOGO */
-#define MODKEY WLR_MODIFIER_ALT
+#define MODKEY WLR_MODIFIER_LOGO
 
 #define TAGKEYS(KEY, SKEY, TAG)                                                \
   {MODKEY, KEY, view, {.ui = 1 << TAG}},                                       \
@@ -118,5 +119,6 @@ static const enum libinput_config_tap_button_map button_map =
   }
 
 /* commands */
-static const char *termcmd[] = {"foot", NULL};
-static const char *menucmd[] = {"tofi-run", NULL};
+/* If you drop the full path, use execlp instead of execl */
+static const char *termcmd = "/usr/local/bin/foot";
+static const char *menucmd = "/home/chriselrod/.local/bin/tofi-drun";
