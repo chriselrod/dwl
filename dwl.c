@@ -52,6 +52,7 @@
 #include <wlr/types/wlr_xdg_output_v1.h>
 #include <wlr/types/wlr_xdg_shell.h>
 #include <wlr/util/log.h>
+#include <xkbcommon/xkbcommon-keysyms.h>
 #include <xkbcommon/xkbcommon.h>
 #ifdef XWAYLAND
 #include <X11/Xlib.h>
@@ -1335,10 +1336,14 @@ int keybinding(uint32_t mods, xkb_keysym_t sym) {
    */
   uint32_t cmods = CLEANMASK(mods);
   int i = 0;
+  // case XKB_KEY_i: i = 2; __attribute__((fallthrough));
+  // case XKB_KEY_d: incnmaster(--i); return 1;
   if (cmods == CLEANMASK(MODKEY)) {
     switch (sym) {
-    case XKB_KEY_j: i = 1; __attribute__((fallthrough));
-    case XKB_KEY_k: focusstack(i); return 1;
+    case XKB_KEY_l:
+    case XKB_KEY_k: i = 1; __attribute__((fallthrough));
+    case XKB_KEY_j:
+    case XKB_KEY_h: focusstack(i); return 1;
     case XKB_KEY_9: i = 1; __attribute__((fallthrough));
     case XKB_KEY_8: ++i; __attribute__((fallthrough));
     case XKB_KEY_7: ++i; __attribute__((fallthrough));
@@ -1349,10 +1354,8 @@ int keybinding(uint32_t mods, xkb_keysym_t sym) {
     case XKB_KEY_2: ++i; __attribute__((fallthrough));
     case XKB_KEY_1: view((uint32_t)1 << (uint32_t)i); return 1;
     case XKB_KEY_p: spawn1(menucmd, "--drun-launch=true"); return 1;
-    case XKB_KEY_i: i = 2; __attribute__((fallthrough));
-    case XKB_KEY_d: incnmaster(--i); return 1;
-    case XKB_KEY_h: i = 2; __attribute__((fallthrough));
-    case XKB_KEY_l: setmfact(--i); return 1;
+    case XKB_KEY_equal: i = 2; __attribute__((fallthrough));
+    case XKB_KEY_minus: setmfact(--i); return 1;
     case XKB_KEY_Return: zoom(); return 1;
     case XKB_KEY_0: i = ~0; __attribute__((fallthrough));
     case XKB_KEY_Tab: view(i); return 1;
