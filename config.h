@@ -120,5 +120,6 @@ static const enum libinput_config_tap_button_map button_map =
 
 /* commands */
 /* If you drop the full path, use execlp instead of execl */
-static const char *termcmd = "/home/chriselrod/.local/bin/wezterm";
+static const char *termcmd = "/usr/local/bin/foot";
+// static const char *termcmd = "/home/chriselrod/.local/bin/wezterm";
 static const char *menucmd = "/home/chriselrod/.local/bin/tofi-drun";
