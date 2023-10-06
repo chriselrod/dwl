@@ -1398,7 +1398,7 @@ int keybinding(uint32_t mods, xkb_keysym_t sym) {
     case XKB_KEY_C: killclient(); return 1;
     case XKB_KEY_space: togglefloating(); return 1;
     case XKB_KEY_parenright: tag(~0); return 1;
-    case WLR_MODIFIER_SHIFT: i = 1; __attribute__((fallthrough));
+    case XKB_KEY_less: i = 1; __attribute__((fallthrough));
     case XKB_KEY_greater:
       tagmon(i ? WLR_DIRECTION_LEFT : WLR_DIRECTION_RIGHT);
       return 1;
