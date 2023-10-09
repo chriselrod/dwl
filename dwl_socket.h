@@ -28,28 +28,8 @@ static inline int find_parent_pid(int cpid) {
     return -1;
   }
   // pid (Name Multi Word) S ppid ...
-  char line[128];
   int ppid = 0;
-  if (fgets(line, sizeof(line), file) != NULL) {
-    char *l = line+3; // pid, space, open paren are safe
-    int spaces = 2, total = 128;
-    while (total--){
-        if ((*(l++)) == ')') break;
-    }
-    while ((spaces > 0) && (total > 0)) {
-      if ((*l) == ' ')
-        --spaces;
-      --total;
-      ++l;
-    }
-    // check that we still have a space before calling `atoi`.
-    for (int i = 0; i < total; ++i) {
-      if (l[i] == ' ') {
-        ppid = atoi(l);
-        break;
-      }
-    }
-  }
+  fscanf(file, "%*llu (%*[^)]%*[)] %*c %d", &ppid);
   fclose(file);
   return ppid;
 }
