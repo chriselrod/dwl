@@ -1,3 +1,7 @@
+#ifndef dwl_config_h_INCLUDED
+#define dwl_config_h_INCLUDED
+#include "dwl.h"
+
 /* appearance */
 static const int sloppyfocus = 1; /* focus follows mouse */
 static const int bypass_surface_visibility =
@@ -123,3 +127,4 @@ static const enum libinput_config_tap_button_map button_map =
 static const char *termcmd = "/usr/local/bin/foot";
 // static const char *termcmd = "/home/chriselrod/.local/bin/wezterm";
 static const char *menucmd = "/home/chriselrod/.local/bin/tofi-drun";
+#endif // dwl_config_h_INCLUDED

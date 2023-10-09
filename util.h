@@ -1,3 +1,5 @@
+#ifndef dwl_util_h_INCLUDED
+#define dwl_util_h_INCLUDED
 /* See LICENSE.dwm file for copyright and license details. */
 #include <stdarg.h>
 #include <stdio.h>
@@ -22,3 +24,5 @@ void *ecalloc(size_t nmemb, size_t size) {
   if (!p) die("calloc:");
   return p;
 }
+
+#endif // dwl_util_h_INCLUDED
