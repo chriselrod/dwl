@@ -18,20 +18,18 @@ static struct wl_display *dpy;
 static struct sockaddr_un saddr;
 
 static inline int find_parent_pid(int cpid) {
-  char filename[64];
-  // 4th entry is ppid
+  char filename[32]; // at most 22 char needed for `int`, 31 for `long`
   sprintf(filename, "/proc/%d/stat", cpid);
 
-  FILE *file = fopen(filename, "r");
-  if (file == NULL) {
-    perror("fopen");
-    return -1;
+  if (FILE *file = fopen(filename, "r")) {
+    // pid (Name Maybe Multi Word) S ppid ...
+    int ppid = 0;
+    fscanf(file, "%*llu (%*[^)]%*[)] %*c %d", &ppid);
+    fclose(file);
+    return ppid;
   }
-  // pid (Name Multi Word) S ppid ...
-  int ppid = 0;
-  fscanf(file, "%*llu (%*[^)]%*[)] %*c %d", &ppid);
-  fclose(file);
-  return ppid;
+  perror("fopen");
+  return -1;
 }
 
 static inline int handle_connection(int fd, uint32_t mask, void *data) {

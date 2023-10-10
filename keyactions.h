@@ -1,20 +1,17 @@
 #ifndef keyactions_h_INCLUDED
 #define keyactions_h_INCLUDED
+#include "client.h"
 #include "config.h"
 #include "dwl.h"
 #include "util.h"
-#include "client.h"
 void focus_kakc(void) {
-  // Monitor *m = NULL;
   Client *c;
-  // wl_list_for_each(m, &mons, link) {
-    wl_list_for_each(c, &clients, link) {
-      const char *title = client_get_title(c);
-      if ((!title) || (strncmp(title, "kak -c", 2) != 0)) continue;
-      focusclient(c, 1);
-      return;
-    }
-  // }
+  wl_list_for_each(c, &clients, link) {
+    const char *title = client_get_title(c);
+    if ((!title) || (strncmp(title, "kak -c", 2) != 0)) continue;
+    focusclient(c, 1);
+    return;
+  }
 }
 int keybinding(uint32_t mods, xkb_keysym_t sym) {
   /*

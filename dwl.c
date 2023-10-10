@@ -2,8 +2,8 @@
  * See LICENSE file for copyright and license details.
  */
 #include "dwl.h"
-#include "util.h"
 #include "dwl_socket.h"
+#include "util.h"
 /* configuration, allows nested code to access above variables */
 #include "config.h"
 #include "keyactions.h"
@@ -1397,7 +1397,6 @@ void resize(Client *c, struct wlr_box geo, int interact) {
   c->resize =
       client_set_size(c, c->geom.width - 2 * c->bw, c->geom.height - 2 * c->bw);
 }
-
 
 void run(char *startup_cmd) {
   /* Add a Unix socket to the Wayland display. */
