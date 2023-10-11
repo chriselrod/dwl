@@ -260,7 +260,7 @@ static void focusstack(int i);
 static Client *focustop(Monitor *m);
 static void fullscreennotify(struct wl_listener *listener, void *data);
 static void handlesig(int signo);
-static void incnmaster(int i);
+// static void incnmaster(int i);
 static void inputdevice(struct wl_listener *listener, void *data);
 static int keybinding(uint32_t mods, xkb_keysym_t sym);
 static void keypress(struct wl_listener *listener, void *data);

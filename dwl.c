@@ -875,11 +875,13 @@ void handlesig(int signo) {
   }
 }
 
+/*
 void incnmaster(int i) {
   if (!selmon) return;
   selmon->nmaster = MAX(selmon->nmaster + i, 0);
   arrange(selmon);
 }
+*/
 
 void inputdevice(struct wl_listener *listener, void *data) {
   /* This event is raised by the backend when a new input device becomes
