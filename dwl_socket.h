@@ -29,11 +29,11 @@ static inline int find_parent_pid(int cpid) {
     return ppid;
   }
   perror("fopen");
-  return -1;
+  return 0;
 }
 
 static inline int handle_connection(int fd, uint32_t mask, void *data) {
-  int client_fd, pid_to_focus, pid;
+  int client_fd, fpid, pid, ppids[16];
   Client *c;
   (void)fd;
   assert(mask == WL_EVENT_READABLE);
@@ -52,18 +52,16 @@ static inline int handle_connection(int fd, uint32_t mask, void *data) {
   //   close(client_fd);
   //   return 0;
   // }
-  read(client_fd, &pid_to_focus, sizeof(pid_to_focus));
-  if (pid_to_focus <= 0) return 0;
-
-  pid = 0;
+  read(client_fd, &fpid, sizeof(fpid));
+  if (fpid <= 0) return 0;
+  int N = 0;
+  for (; fpid && N < 16; ++N, fpid = find_parent_pid(fpid)) { ppids[N] = fpid; }
   wl_list_for_each(c, &clients, link) {
     wl_client_get_credentials(c->surface.xdg->client->client, &pid, NULL, NULL);
-    while (pid) {
-      if (pid == pid_to_focus) {
-        focusclient(c, 1);
-        return 0;
-      }
-      pid = find_parent_pid(pid);
+    for (int i = 0; i < N; ++i) {
+      if (ppids[i] != pid) continue;
+      focusclient(c, 1);
+      return 0;
     }
   }
   return 0;
