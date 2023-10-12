@@ -82,7 +82,7 @@ static inline void ipc_init(void) {
   saddr.sun_family = AF_UNIX;
 
   if (sizeof(saddr.sun_path) <= snprintf(saddr.sun_path, sizeof(saddr.sun_path),
-                                         "%s/sway-ipc.%u.%i.sock", dir,
+                                         "%s/dwl-ipc.%u.%i.sock", dir,
                                          getuid(), getpid())) {
     die("Socket path won't fit into ipc_sockaddr->sun_path");
   }
