@@ -24,7 +24,7 @@ static inline int find_parent_pid(int cpid) {
   if ((file = fopen(filename, "r"))) {
     // pid (Name Maybe Multi Word) S ppid ...
     int ppid = 0;
-    fscanf(file, "%*llu (%*[^)]%*[)] %*c %d", &ppid);
+    fscanf(file, "%*u (%*[^)]%*[)] %*c %d", &ppid);
     fclose(file);
     return ppid;
   }
