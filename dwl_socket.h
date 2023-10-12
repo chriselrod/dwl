@@ -33,7 +33,7 @@ static inline int find_parent_pid(int cpid) {
 }
 
 static inline int handle_connection(int fd, uint32_t mask, void *data) {
-  int client_fd, fpid, pid, ppids[16];
+  int client_fd, fpid, pid, ppids[16], N=0;
   Client *c;
   (void)fd;
   assert(mask == WL_EVENT_READABLE);
@@ -54,7 +54,6 @@ static inline int handle_connection(int fd, uint32_t mask, void *data) {
   // }
   read(client_fd, &fpid, sizeof(fpid));
   if (fpid <= 0) return 0;
-  int N = 0;
   for (; fpid && N < 16; ++N, fpid = find_parent_pid(fpid)) { ppids[N] = fpid; }
   wl_list_for_each(c, &clients, link) {
     wl_client_get_credentials(c->surface.xdg->client->client, &pid, NULL, NULL);
