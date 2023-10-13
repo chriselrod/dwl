@@ -1,7 +1,6 @@
 #ifndef dwl_h_INCLUDED
 #define dwl_h_INCLUDED
 
-
 #include <getopt.h>
 #include <libinput.h>
 #include <limits.h>
@@ -60,7 +59,6 @@
 #include <wlr/xwayland.h>
 #include <xcb/xcb_icccm.h>
 #endif
-
 
 /* macros */
 #define MAX(A, B) ((A) > (B) ? (A) : (B))
@@ -276,6 +274,7 @@ static void motionabsolute(struct wl_listener *listener, void *data);
 static void motionnotify(uint32_t time);
 static void motionrelative(struct wl_listener *listener, void *data);
 static void moveresize(uint32_t ui);
+static void movestack(int i);
 static void outputmgrapply(struct wl_listener *listener, void *data);
 static void outputmgrapplyortest(struct wlr_output_configuration_v1 *config,
                                  int test);
@@ -410,6 +409,5 @@ static struct wl_listener xwayland_ready = {.notify = xwaylandready};
 static struct wlr_xwayland *xwayland;
 static Atom netatom[NetLast];
 #endif
-
 
 #endif // dwl_h_INCLUDED

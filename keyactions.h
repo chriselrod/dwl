@@ -80,6 +80,10 @@ int keybinding(uint32_t mods, xkb_keysym_t sym) {
     case XKB_KEY_at: ++i; __attribute__((fallthrough));
     case XKB_KEY_exclam: tag((uint32_t)1 << (uint32_t)i); return 1;
     case XKB_KEY_Return: spawn(termcmd); return 1;
+    case XKB_KEY_L:
+    case XKB_KEY_K: i = 1; __attribute__((fallthrough));
+    case XKB_KEY_J:
+    case XKB_KEY_H: movestack(i); return 1;
     case XKB_KEY_C: killclient(); return 1;
     case XKB_KEY_space: togglefloating(); return 1;
     case XKB_KEY_parenright: tag(~0); return 1;
