@@ -4,7 +4,7 @@
 #include "config.h"
 #include "dwl.h"
 #include "util.h"
-void focus_kakc(void) {
+/*void focus_kakc(void) {
   Client *c;
   wl_list_for_each(c, &clients, link) {
     const char *title = client_get_title(c);
@@ -12,7 +12,7 @@ void focus_kakc(void) {
     focusclient(c, 1);
     return;
   }
-}
+}*/
 int keybinding(uint32_t mods, xkb_keysym_t sym) {
   /*
    * Here we handle compositor keybindings. This is when the compositor is
@@ -122,9 +122,9 @@ int keybinding(uint32_t mods, xkb_keysym_t sym) {
     case XKB_KEY_XF86Switch_VT_2: ++i; __attribute__((fallthrough));
     case XKB_KEY_XF86Switch_VT_1: chvt(++i); return 1;
     }
-  } else if (cmods == CLEANMASK(WLR_MODIFIER_CTRL | WLR_MODIFIER_SHIFT)) {
+  } /*else if (cmods == CLEANMASK(WLR_MODIFIER_CTRL | WLR_MODIFIER_SHIFT)) {
     if ((sym == XKB_KEY_E) || (sym == XKB_KEY_B)) focus_kakc(); // passthrough
-  }
+  }*/
   return 0;
 }
 #endif // keyactions_h_INCLUDED
