@@ -108,8 +108,6 @@ int keybinding(uint32_t mods, xkb_keysym_t sym) {
     }
   } else if (cmods == CLEANMASK(WLR_MODIFIER_CTRL | WLR_MODIFIER_ALT)) {
     switch (sym) {
-    case XKB_KEY_b: // passthrough, returning `0` to forward keys to helix
-    case XKB_KEY_o: focus_kakc(); return 0;
     case XKB_KEY_Terminate_Server: quit(); return 1;
     case XKB_KEY_XF86Switch_VT_12: i = 1; __attribute__((fallthrough));
     case XKB_KEY_XF86Switch_VT_11: ++i; __attribute__((fallthrough));
@@ -124,6 +122,8 @@ int keybinding(uint32_t mods, xkb_keysym_t sym) {
     case XKB_KEY_XF86Switch_VT_2: ++i; __attribute__((fallthrough));
     case XKB_KEY_XF86Switch_VT_1: chvt(++i); return 1;
     }
+  } else if (cmods == CLEANMASK(WLR_MODIFIER_CTRL | WLR_MODIFIER_SHIFT)) {
+    if ((sym == XKB_KEY_E) || (sym == XKB_KEY_B)) focus_kakc(); // passthrough
   }
   return 0;
 }
