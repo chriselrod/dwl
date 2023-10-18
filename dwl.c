@@ -70,11 +70,11 @@ void arrange(Monitor *m) {
   wlr_scene_node_set_enabled(&m->fullscreen_bg->node,
                              (c = focustop(m)) && c->isfullscreen);
 
-#pragma GCC diagnostic push
-#pragma GCC diagnostic ignored "-Wstringop-truncation"
-  strncpy(m->ltsymbol, m->lt[m->sellt]->symbol, LENGTH(m->ltsymbol));
-#pragma GCC diagnostic pop
-  if (m->lt[m->sellt]->arrange) m->lt[m->sellt]->arrange(m);
+  switch (m->lt[m->sellt]) {
+  case Column: column(m); break;
+  case Tile: tile(m); break;
+  case Monocle: monocle(m); break;
+  }
   motionnotify(0);
   checkidleinhibitor(NULL);
 }
@@ -104,7 +104,7 @@ void arrangelayer(Monitor *m, struct wl_list *list, struct wlr_box *usable_area,
 void arrangelayers(Monitor *m) {
   int i;
   struct wlr_box usable_area = m->m;
-  uint32_t layers_above_shell[] = {
+  uint32_t layers_above_shell[2] = {
       ZWLR_LAYER_SHELL_V1_LAYER_OVERLAY,
       ZWLR_LAYER_SHELL_V1_LAYER_TOP,
   };
@@ -530,10 +530,6 @@ void createmon(struct wl_listener *listener, void *data) {
   if (m->m.x < 0 || m->m.y < 0)
     wlr_output_layout_add_auto(output_layout, wlr_output);
   else wlr_output_layout_add(output_layout, wlr_output, m->m.x, m->m.y);
-#pragma GCC diagnostic push
-#pragma GCC diagnostic ignored "-Wstringop-truncation"
-  strncpy(m->ltsymbol, m->lt[m->sellt]->symbol, LENGTH(m->ltsymbol));
-#pragma GCC diagnostic pop
 }
 
 void createnotify(struct wl_listener *listener, void *data) {
@@ -1096,16 +1092,23 @@ void maximizenotify(struct wl_listener *listener, void *data) {
   wlr_xdg_surface_schedule_configure(c->surface.xdg);
 }
 
+const char *getltsymbol(Monitor *m) {
+  switch (m->lt[m->sellt]) {
+  case Column: return "|||";
+  case Tile: return "[]=";
+  default: return "[M]";
+  }
+}
+
 void monocle(Monitor *m) {
   Client *c;
-  int n = 0;
-
+  // int n = 0;
   wl_list_for_each(c, &clients, link) {
     if (!VISIBLEON(c, m) || c->isfloating || c->isfullscreen) continue;
     resize(c, m->w, 0);
-    n++;
+    //   n++;
   }
-  if (n) snprintf(m->ltsymbol, LENGTH(m->ltsymbol), "[%d]", n);
+  // if (n) snprintf(m->ltsymbol, LENGTH(m->ltsymbol), "[%d]", n);
   if ((c = focustop(m))) wlr_scene_node_raise_to_top(&c->scene->node);
 }
 
@@ -1342,7 +1345,7 @@ void printstatus(void) {
     printf("%s selmon %u\n", m->wlr_output->name, m == selmon);
     printf("%s tags %u %u %u %u\n", m->wlr_output->name, occ,
            m->tagset[m->seltags], sel, urg);
-    printf("%s layout %s\n", m->wlr_output->name, m->ltsymbol);
+    printf("%s layout %s\n", m->wlr_output->name, getltsymbol(m));
   }
   fflush(stdout);
 }
@@ -1498,15 +1501,10 @@ void setfullscreen(Client *c, int fullscreen) {
   printstatus();
 }
 
-void setlayout(const Layout *layout) {
+void setlayout(enum Layout layout) {
   if (!selmon) return;
-  if (!layout || layout != selmon->lt[selmon->sellt]) selmon->sellt ^= 1;
-  if (layout) selmon->lt[selmon->sellt] = layout;
-#pragma GCC diagnostic push
-#pragma GCC diagnostic ignored "-Wstringop-truncation"
-  strncpy(selmon->ltsymbol, selmon->lt[selmon->sellt]->symbol,
-          LENGTH(selmon->ltsymbol));
-#pragma GCC diagnostic pop
+  if (layout != selmon->lt[selmon->sellt]) selmon->sellt ^= 1;
+  selmon->lt[selmon->sellt] = layout;
   arrange(selmon);
   printstatus();
 }
@@ -1514,7 +1512,7 @@ void setlayout(const Layout *layout) {
 /* 0.05 * i > 1.0 will set mfact absolutely */
 void setmfact(int i) {
   float f = 0.05f * i;
-  if (!selmon || !selmon->lt[selmon->sellt]->arrange) return;
+  if (!selmon) return;
   f = f < 1.0 ? f + selmon->mfact : f - 1.0;
   if (f < 0.1 || f > 0.9) return;
   selmon->mfact = f;
@@ -2102,8 +2100,7 @@ void xytonode(double x, double y, struct wlr_surface **psurface, Client **pc,
 void zoom(void) {
   Client *c, *sel = focustop(selmon);
 
-  if (!sel || !selmon || !selmon->lt[selmon->sellt]->arrange || sel->isfloating)
-    return;
+  if (!sel || !selmon || sel->isfloating) return;
 
   /* Search for the first tiled window that is not sel, marking sel as
    * NULL if we pass it along the way */

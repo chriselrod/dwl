@@ -164,10 +164,11 @@ typedef struct {
   struct wl_listener surface_commit;
 } LayerSurface;
 
-typedef struct {
-  const char *symbol;
-  void (*arrange)(Monitor *);
-} Layout;
+enum Layout { Column, Tile, Monocle };
+// typedef struct {
+//   char symbol[3];
+//   void (*arrange)(Monitor *);
+// } Layout;
 
 struct Monitor {
   struct wl_list link;
@@ -181,13 +182,12 @@ struct Monitor {
   struct wlr_box m;         /* monitor area, layout-relative */
   struct wlr_box w;         /* window area, layout-relative */
   struct wl_list layers[4]; /* LayerSurface::link */
-  const Layout *lt[2];
+  enum Layout lt[2];
   unsigned int seltags;
   unsigned int sellt;
   uint32_t tagset[2];
   int nmaster;
   double mfact;
-  char ltsymbol[16];
 };
 
 typedef struct {
@@ -195,7 +195,7 @@ typedef struct {
   float mfact;
   int nmaster;
   float scale;
-  const Layout *lt;
+  enum Layout lt;
   enum wl_output_transform rr;
   int x, y;
 } MonitorRule;
@@ -210,7 +210,6 @@ typedef struct {
 
 typedef struct {
   struct wlr_scene_tree *scene;
-
   struct wlr_session_lock_v1 *lock;
   struct wl_listener new_surface;
   struct wl_listener unlock;
@@ -290,7 +289,7 @@ static void run(char *startup_cmd);
 static void setcursor(struct wl_listener *listener, void *data);
 static void setfloating(Client *c, int floating);
 static void setfullscreen(Client *c, int fullscreen);
-static void setlayout(const Layout *layout);
+static void setlayout(enum Layout layout);
 static void setmfact(int i);
 static void setmon(Client *c, Monitor *m, uint32_t newtags);
 static void setpsel(struct wl_listener *listener, void *data);

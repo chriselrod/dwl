@@ -27,13 +27,13 @@ static const Rule rules[] = {
 };
 
 /* layout(s) */
-static const Layout layouts[] = {
-    /* symbol     arrange function */
-    {"[][]", column},
-    {"[]=", tile},
-    {"><>", NULL}, /* no layout function means floating behavior */
-    {"[M]", monocle},
-};
+// static const Layout layouts[] = {
+//     /* symbol     arrange function */
+//     {"|||", column},
+//     {"[]=", tile},
+//     // {"><>", NULL}, /* no layout function means floating behavior */
+//     {"[M]", monocle},
+// };
 
 /* monitors */
 static const MonitorRule monrules[] = {
@@ -43,7 +43,7 @@ static const MonitorRule monrules[] = {
     -1,  -1 },
     */
     /* defaults */
-    {NULL, 0.55, 1, 1, &layouts[0], WL_OUTPUT_TRANSFORM_NORMAL, -1, -1},
+    {NULL, 0.55, 1, 1, Column, WL_OUTPUT_TRANSFORM_NORMAL, -1, -1},
 };
 
 /* keyboard */

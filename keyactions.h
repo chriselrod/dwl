@@ -4,15 +4,15 @@
 #include "config.h"
 #include "dwl.h"
 #include "util.h"
-/*void focus_kakc(void) {
+void focus_kakc(void) {
   Client *c;
   wl_list_for_each(c, &clients, link) {
     const char *title = client_get_title(c);
-    if ((!title) || (strncmp(title, "kak -c", 2) != 0)) continue;
+    if ((!title) || (strncmp(title, "kak -c", 6) != 0)) continue;
     focusclient(c, 1);
     return;
   }
-}*/
+}
 int keybinding(uint32_t mods, xkb_keysym_t sym) {
   /*
    * Here we handle compositor keybindings. This is when the compositor is
@@ -48,11 +48,11 @@ int keybinding(uint32_t mods, xkb_keysym_t sym) {
     case XKB_KEY_Return: zoom(); return 1;
     case XKB_KEY_0: i = ~0; __attribute__((fallthrough));
     case XKB_KEY_Tab: view(i); return 1;
-    case XKB_KEY_space: i = -3; __attribute__((fallthrough));
+    // case XKB_KEY_space: i = -3; __attribute__((fallthrough));
     case XKB_KEY_m: ++i; __attribute__((fallthrough));
-    case XKB_KEY_f: ++i; __attribute__((fallthrough));
+    // case XKB_KEY_f: ++i; __attribute__((fallthrough));
     case XKB_KEY_t: ++i; __attribute__((fallthrough));
-    case XKB_KEY_c: setlayout(i < 0 ? (Layout *)NULL : &layouts[i]); return 1;
+    case XKB_KEY_c: setlayout((enum Layout)i); return 1;
     case XKB_KEY_e: togglefullscreen(); return 1;
     }
     return 1;
@@ -85,7 +85,7 @@ int keybinding(uint32_t mods, xkb_keysym_t sym) {
     case XKB_KEY_J:
     case XKB_KEY_H: movestack(i); return 1;
     case XKB_KEY_C: killclient(); return 1;
-    case XKB_KEY_space: togglefloating(); return 1;
+    //	case XKB_KEY_space: togglefloating(); return 1;
     case XKB_KEY_parenright: tag(~0); return 1;
     case XKB_KEY_less: i = 1; __attribute__((fallthrough));
     case XKB_KEY_greater:
@@ -122,9 +122,9 @@ int keybinding(uint32_t mods, xkb_keysym_t sym) {
     case XKB_KEY_XF86Switch_VT_2: ++i; __attribute__((fallthrough));
     case XKB_KEY_XF86Switch_VT_1: chvt(++i); return 1;
     }
-  } /*else if (cmods == CLEANMASK(WLR_MODIFIER_CTRL | WLR_MODIFIER_SHIFT)) {
+  } else if (cmods == CLEANMASK(WLR_MODIFIER_CTRL | WLR_MODIFIER_SHIFT)) {
     if ((sym == XKB_KEY_E) || (sym == XKB_KEY_B)) focus_kakc(); // passthrough
-  }*/
+  }
   return 0;
 }
 #endif // keyactions_h_INCLUDED
