@@ -1511,7 +1511,7 @@ void setlayout(enum Layout layout) {
 
 /* 0.05 * i > 1.0 will set mfact absolutely */
 void setmfact(int i) {
-  float f = 0.05f * i;
+  float f = 0.01f * i;
   if (!selmon) return;
   f = f < 1.0 ? f + selmon->mfact : f - 1.0;
   if (f < 0.1 || f > 0.9) return;
