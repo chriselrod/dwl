@@ -344,7 +344,7 @@ static void setgamma(struct wl_listener *listener, void *data);
 static void setmon(Client *c, Monitor *m, uint32_t newtags);
 static void setpsel(struct wl_listener *listener, void *data);
 static void setsel(struct wl_listener *listener, void *data);
-static void setup(void);
+static void setup(int);
 // static void spawn(const char *);
 static void spawn1(const char *, const char *);
 static void spawn2(const char *, const char *, const char *);
@@ -1522,6 +1522,31 @@ void movestack(int i) {
   arrange(selmon);
 }
 
+static uint32_t shiftnumbertomask(xkb_keysym_t sym) {
+  switch (sym) {
+  case XKB_KEY_parenleft:
+    return 256;
+  case XKB_KEY_asterisk:
+    return 128;
+  case XKB_KEY_ampersand:
+    return 64;
+  case XKB_KEY_asciicircum:
+    return 32;
+  case XKB_KEY_percent:
+    return 16;
+  case XKB_KEY_dollar:
+    return 8;
+  case XKB_KEY_numbersign:
+    return 4;
+  case XKB_KEY_at:
+    return 2;
+  case XKB_KEY_exclam:
+    return 1;
+  default:
+    return 0;
+  }
+}
+
 int keybinding(uint32_t mods, xkb_keysym_t sym) {
   /*
    * Here we handle compositor keybindings. This is when the compositor is
@@ -1549,31 +1574,15 @@ int keybinding(uint32_t mods, xkb_keysym_t sym) {
       focusmon(i ? WLR_DIRECTION_LEFT : WLR_DIRECTION_RIGHT);
       return 1;
     case XKB_KEY_9:
-      i = 1;
-      __attribute__((fallthrough));
     case XKB_KEY_8:
-      ++i;
-      __attribute__((fallthrough));
     case XKB_KEY_7:
-      ++i;
-      __attribute__((fallthrough));
     case XKB_KEY_6:
-      ++i;
-      __attribute__((fallthrough));
     case XKB_KEY_5:
-      ++i;
-      __attribute__((fallthrough));
     case XKB_KEY_4:
-      ++i;
-      __attribute__((fallthrough));
     case XKB_KEY_3:
-      ++i;
-      __attribute__((fallthrough));
     case XKB_KEY_2:
-      ++i;
-      __attribute__((fallthrough));
     case XKB_KEY_1:
-      view((uint32_t)1 << (uint32_t)i);
+      view((uint32_t)1 << (uint32_t)(sym - XKB_KEY_1));
       return 1;
     case XKB_KEY_r:
       spawn2("/home/chriselrod/.local/bin/tofi-drun", "--drun-launch=true",
@@ -1611,62 +1620,19 @@ int keybinding(uint32_t mods, xkb_keysym_t sym) {
   } else if (cmods == CLEANMASK((MODKEY | WLR_MODIFIER_CTRL))) {
     switch (sym) {
     case XKB_KEY_9:
-      i = 1;
-      __attribute__((fallthrough));
     case XKB_KEY_8:
-      ++i;
-      __attribute__((fallthrough));
     case XKB_KEY_7:
-      ++i;
-      __attribute__((fallthrough));
     case XKB_KEY_6:
-      ++i;
-      __attribute__((fallthrough));
     case XKB_KEY_5:
-      ++i;
-      __attribute__((fallthrough));
     case XKB_KEY_4:
-      ++i;
-      __attribute__((fallthrough));
     case XKB_KEY_3:
-      ++i;
-      __attribute__((fallthrough));
     case XKB_KEY_2:
-      ++i;
-      __attribute__((fallthrough));
     case XKB_KEY_1:
-      toggleview((uint32_t)1 << (uint32_t)i);
+      toggleview((uint32_t)1 << (uint32_t)(sym - XKB_KEY_1));
       return 1;
     }
   } else if (cmods == CLEANMASK((MODKEY | WLR_MODIFIER_SHIFT))) {
     switch (sym) {
-    case XKB_KEY_parenleft:
-      i = 1;
-      __attribute__((fallthrough));
-    case XKB_KEY_asterisk:
-      ++i;
-      __attribute__((fallthrough));
-    case XKB_KEY_ampersand:
-      ++i;
-      __attribute__((fallthrough));
-    case XKB_KEY_asciicircum:
-      ++i;
-      __attribute__((fallthrough));
-    case XKB_KEY_percent:
-      ++i;
-      __attribute__((fallthrough));
-    case XKB_KEY_dollar:
-      ++i;
-      __attribute__((fallthrough));
-    case XKB_KEY_numbersign:
-      ++i;
-      __attribute__((fallthrough));
-    case XKB_KEY_at:
-      ++i;
-      __attribute__((fallthrough));
-    case XKB_KEY_exclam:
-      tag((uint32_t)1 << (uint32_t)i);
-      return 1;
     // case XKB_KEY_Return:
     //   spawn("/usr/bin/foot");
     //   // spawn1("/usr/bin/footclient", "-N");
@@ -1696,35 +1662,18 @@ int keybinding(uint32_t mods, xkb_keysym_t sym) {
       quit();
       return 1;
     }
+    {
+      uint32_t mask = shiftnumbertomask(sym);
+      if (mask) {
+        tag(mask);
+        return 1;
+      }
+    }
   } else if (cmods ==
              CLEANMASK((MODKEY | WLR_MODIFIER_CTRL | WLR_MODIFIER_SHIFT))) {
-    switch (sym) {
-    case XKB_KEY_parenleft:
-      i = 1;
-      __attribute__((fallthrough));
-    case XKB_KEY_asterisk:
-      ++i;
-      __attribute__((fallthrough));
-    case XKB_KEY_ampersand:
-      ++i;
-      __attribute__((fallthrough));
-    case XKB_KEY_asciicircum:
-      ++i;
-      __attribute__((fallthrough));
-    case XKB_KEY_percent:
-      ++i;
-      __attribute__((fallthrough));
-    case XKB_KEY_dollar:
-      ++i;
-      __attribute__((fallthrough));
-    case XKB_KEY_numbersign:
-      ++i;
-      __attribute__((fallthrough));
-    case XKB_KEY_at:
-      ++i;
-      __attribute__((fallthrough));
-    case XKB_KEY_exclam:
-      toggletag((uint32_t)1 << (uint32_t)i);
+    uint32_t mask = shiftnumbertomask(sym);
+    if (mask) {
+      toggletag(mask);
       return 1;
     }
   } else if (cmods == CLEANMASK((WLR_MODIFIER_CTRL | WLR_MODIFIER_ALT))) {
@@ -1733,40 +1682,18 @@ int keybinding(uint32_t mods, xkb_keysym_t sym) {
       quit();
       return 1;
     case XKB_KEY_XF86Switch_VT_12:
-      i = 1;
-      __attribute__((fallthrough));
     case XKB_KEY_XF86Switch_VT_11:
-      ++i;
-      __attribute__((fallthrough));
     case XKB_KEY_XF86Switch_VT_10:
-      ++i;
-      __attribute__((fallthrough));
     case XKB_KEY_XF86Switch_VT_9:
-      ++i;
-      __attribute__((fallthrough));
     case XKB_KEY_XF86Switch_VT_8:
-      ++i;
-      __attribute__((fallthrough));
     case XKB_KEY_XF86Switch_VT_7:
-      ++i;
-      __attribute__((fallthrough));
     case XKB_KEY_XF86Switch_VT_6:
-      ++i;
-      __attribute__((fallthrough));
     case XKB_KEY_XF86Switch_VT_5:
-      ++i;
-      __attribute__((fallthrough));
     case XKB_KEY_XF86Switch_VT_4:
-      ++i;
-      __attribute__((fallthrough));
     case XKB_KEY_XF86Switch_VT_3:
-      ++i;
-      __attribute__((fallthrough));
     case XKB_KEY_XF86Switch_VT_2:
-      ++i;
-      __attribute__((fallthrough));
     case XKB_KEY_XF86Switch_VT_1:
-      chvt(++i);
+      chvt(sym - (XKB_KEY_XF86Switch_VT_1 - 1));
       return 1;
     }
   }
@@ -2542,7 +2469,7 @@ void setsel(struct wl_listener *listener, void *data) {
   wlr_seat_set_selection(seat, event->source, event->serial);
 }
 
-void setup(void) {
+void setup(int log_level) {
   int i, sig[] = {SIGCHLD, SIGINT, SIGTERM, SIGPIPE};
   struct sigaction sa = {.sa_flags = SA_RESTART, .sa_handler = handlesig};
   sigemptyset(&sa.sa_mask);
@@ -3258,8 +3185,7 @@ void xwaylandready(struct wl_listener *listener, void *data) {
 
 int main(int argc, char *argv[]) {
   char *startup_cmd = NULL;
-  int c;
-
+  int c, log_level = WLR_ERROR;
   while ((c = getopt(argc, argv, "s:hdv")) != -1) {
     if (c == 's')
       startup_cmd = optarg;
@@ -3276,7 +3202,7 @@ int main(int argc, char *argv[]) {
   /* Wayland requires XDG_RUNTIME_DIR for creating its communications socket */
   if (!getenv("XDG_RUNTIME_DIR"))
     die("XDG_RUNTIME_DIR must be set");
-  setup();
+  setup(log_level);
   run(startup_cmd);
   cleanup();
   return EXIT_SUCCESS;
