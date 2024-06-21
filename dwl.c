@@ -201,8 +201,6 @@ typedef struct {
   struct wl_listener surface_commit;
 } LayerSurface;
 
-enum Layout { Column, Floating };
-
 struct Monitor {
   struct wl_list link;
   struct wlr_output *wlr_output;
@@ -216,25 +214,22 @@ struct Monitor {
   struct wlr_box m;         /* monitor area, layout-relative */
   struct wlr_box w;         /* window area, layout-relative */
   struct wl_list layers[4]; /* LayerSurface.link */
-  enum Layout lt[2];
   unsigned int seltags;
   unsigned int sellt;
   uint32_t tagset[2];
-  float mfact;
+  // float mfact;
   int gamma_lut_changed;
   int nmaster;
-  char ltsymbol[16];
 };
 
-typedef struct {
-  const char *name;
-  float mfact;
-  int nmaster;
-  float scale;
-  enum Layout lt;
-  enum wl_output_transform rr;
-  int x, y;
-} MonitorRule;
+// typedef struct {
+//   const char *name;
+//   float mfact;
+//   int nmaster;
+//   float scale;
+//   enum wl_output_transform rr;
+//   int x, y;
+// } MonitorRule;
 
 typedef struct {
   struct wlr_pointer_constraint_v1 *constraint;
@@ -325,6 +320,7 @@ static void motionnotify(uint32_t time, struct wlr_input_device *device,
                          double sy_unaccel);
 static void motionrelative(struct wl_listener *listener, void *data);
 static void moveresize(uint32_t);
+static void movestack(int);
 static void outputmgrapply(struct wl_listener *listener, void *data);
 static void outputmgrapplyortest(struct wlr_output_configuration_v1 *config,
                                  int test);
@@ -349,7 +345,9 @@ static void setmon(Client *c, Monitor *m, uint32_t newtags);
 static void setpsel(struct wl_listener *listener, void *data);
 static void setsel(struct wl_listener *listener, void *data);
 static void setup(void);
-static void spawn(const char *);
+// static void spawn(const char *);
+static void spawn1(const char *, const char *);
+static void spawn2(const char *, const char *, const char *);
 static void startdrag(struct wl_listener *listener, void *data);
 static void tag(uint32_t);
 static void tagmon(int);
@@ -513,14 +511,12 @@ void arrange(Monitor *m) {
     if (c->mon != m || c->isfullscreen)
       continue;
 
-    wlr_scene_node_reparent(
-        &c->scene->node,
-        c->isfloating ? layers[m->lt[m->sellt] == Floating ? LyrTile : LyrFloat]
-                      : c->scene->node.parent);
+    wlr_scene_node_reparent(&c->scene->node, c->isfloating
+                                                 ? layers[LyrFloat]
+                                                 : c->scene->node.parent);
   }
 
-  if (m->lt[m->sellt] == Column)
-    collayout(m);
+  collayout(m);
   motionnotify(0, NULL, 0, 0, 0, 0);
   checkidleinhibitor(NULL);
 }
@@ -955,26 +951,10 @@ void createmon(struct wl_listener *listener, void *data) {
   wlr_output_state_init(&state);
   /* Initialize monitor state using configured rules */
   m->tagset[0] = m->tagset[1] = 1;
-  // for (r = monrules; r < END(monrules); r++) {
-  //   if (!r->name || strstr(wlr_output->name, r->name)) {
-  //     m->m.x = r->x;
-  //     m->m.y = r->y;
-  //     m->mfact = r->mfact;
-  //     m->nmaster = r->nmaster;
-  //     m->lt[0] = r->lt;
-  //     m->lt[1] = &layouts[LENGTH(layouts) > 1 && r->lt != &layouts[1]];
-  //     strncpy(m->ltsymbol, m->lt[m->sellt]->symbol, LENGTH(m->ltsymbol));
-  //     wlr_output_state_set_scale(&state, r->scale);
-  //     wlr_output_state_set_transform(&state, r->rr);
-  //     break;
-  //   }
-  // }
   m->m.x = -1;
   m->m.y = -1;
-  m->mfact = 0.5f;
+  // m->mfact = 0.5f;
   m->nmaster = 1;
-  m->lt[0] = Column;
-  m->lt[1] = Column;
   wlr_output_state_set_scale(&state, 1);
   wlr_output_state_set_transform(&state, WL_OUTPUT_TRANSFORM_NORMAL);
 
@@ -1479,14 +1459,14 @@ void inputdevice(struct wl_listener *listener, void *data) {
     caps |= WL_SEAT_CAPABILITY_KEYBOARD;
   wlr_seat_set_capabilities(seat, caps);
 }
-void spawn(const char *cmd) {
-  if (fork() == 0) {
-    dup2(STDERR_FILENO, STDOUT_FILENO);
-    setsid();
-    execl(cmd, cmd, NULL);
-    die("dwl: execvp %s failed:", cmd);
-  }
-}
+// void spawn(const char *cmd) {
+//   if (fork() == 0) {
+//     dup2(STDERR_FILENO, STDOUT_FILENO);
+//     setsid();
+//     execl(cmd, cmd, NULL);
+//     die("dwl: execvp %s failed:", cmd);
+//   }
+// }
 
 void spawn1(const char *cmd, const char *arg) {
   if (fork() == 0) {
@@ -1601,8 +1581,11 @@ int keybinding(uint32_t mods, xkb_keysym_t sym) {
              "IosevkaTermCurly-Regular.ttf");
       return 1;
     case XKB_KEY_q:
-      spawn("/usr/bin/foot");
-      // spawn1("/usr/bin/footclient", "-N");
+      // spawn("/usr/bin/foot");
+      spawn1("/usr/bin/footclient", "-N");
+      return 1;
+    case XKB_KEY_c:
+      killclient();
       return 1;
     // case XKB_KEY_equal:
     //   i = 2;
@@ -1696,9 +1679,9 @@ int keybinding(uint32_t mods, xkb_keysym_t sym) {
     case XKB_KEY_H:
       movestack(i);
       return 1;
-    case XKB_KEY_C:
-      killclient();
-      return 1;
+    // case XKB_KEY_C:
+    //   killclient();
+    //   return 1;
     //	case XKB_KEY_space: togglefloating(); return 1;
     case XKB_KEY_parenright:
       tag(~0);
@@ -1988,8 +1971,6 @@ void maximizenotify(struct wl_listener *listener, void *data) {
 //     resize(c, m->w, 0);
 //     n++;
 //   }
-//   if (n)
-//     snprintf(m->ltsymbol, LENGTH(m->ltsymbol), "[%d]", n);
 //   if ((c = focustop(m)))
 //     wlr_scene_node_raise_to_top(&c->scene->node);
 // }
@@ -2267,7 +2248,6 @@ void printstatus(void) {
     printf("%s selmon %u\n", m->wlr_output->name, m == selmon);
     printf("%s tags %" PRIu32 " %" PRIu32 " %" PRIu32 " %" PRIu32 "\n",
            m->wlr_output->name, occ, m->tagset[m->seltags], sel, urg);
-    printf("%s layout %s\n", m->wlr_output->name, m->ltsymbol);
   }
   fflush(stdout);
 }
@@ -2383,7 +2363,7 @@ void run(char *startup_cmd) {
    * master, etc */
   if (!wlr_backend_start(backend))
     die("startup: backend_start");
-  // spawn1("/usr/bin/foot", "-s");
+  spawn1("/usr/bin/foot", "-s");
   /* Now that the socket exists and the backend is started, run the startup
    * command */
   if (startup_cmd) {
@@ -2457,7 +2437,7 @@ void setfloating(Client *c, int floating) {
   Client *p = client_get_parent(c);
   c->isfloating = floating;
   /* If in floating layout do not change the client's layer */
-  if (!c->mon || c->mon->lt[c->mon->sellt] == Floating)
+  if (!c->mon)
     return;
   wlr_scene_node_reparent(
       &c->scene->node, layers[c->isfullscreen || (p && p->isfullscreen) ? LyrFS
@@ -2505,8 +2485,6 @@ void setgamma(struct wl_listener *listener, void *data) {
 //     selmon->sellt ^= 1;
 //   if (arg && arg->v)
 //     selmon->lt[selmon->sellt] = (Layout *)arg->v;
-//   strncpy(selmon->ltsymbol, selmon->lt[selmon->sellt]->symbol,
-//           LENGTH(selmon->ltsymbol));
 //   arrange(selmon);
 //   printstatus();
 // }
@@ -3125,8 +3103,7 @@ void xytonode(double x, double y, struct wlr_surface **psurface, Client **pc,
 void zoom(void) {
   Client *c, *sel = focustop(selmon);
 
-  if (!sel || !selmon || selmon->lt[selmon->sellt] == Floating ||
-      sel->isfloating)
+  if (!sel || !selmon || sel->isfloating)
     return;
 
   /* Search for the first tiled window that is not sel, marking sel as
