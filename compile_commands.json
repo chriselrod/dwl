@@ -1,0 +1,7 @@
+[
+{
+  "directory": "/home/chriselrod/.config/configdir/modules/dwl",
+  "command": "c99 -DXWAYLAND -I/usr/include/pixman-1 -I/usr/include/libdrm -I. -DWLR_USE_UNSTABLE -D_POSIX_C_SOURCE=200809L -g -pedantic -Wall -Wextra -Wdeclaration-after-statement -Wno-unused-parameter -Wshadow -Wunused-macros -Werror=strict-prototypes -Werror=implicit -Werror=return-type -Werror=incompatible-pointer-types -Wfloat-conversion -march=native -mtune=native -O3 -pipe -fomit-frame-pointer  -lwlroots -lwayland-server -lxkbcommon -linput -lxcb -lxcb-icccm",
+  "file": "/home/chriselrod/.config/configdir/modules/dwl/dwl.c"
+}
+]
