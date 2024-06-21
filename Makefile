@@ -5,11 +5,11 @@ include config.mk
 
 # flags for compiling
 DWLCPPFLAGS = -I. -DWLR_USE_UNSTABLE -D_POSIX_C_SOURCE=200809L -DVERSION=\"$(VERSION)\" $(XWAYLAND)
-DWLDEVCFLAGS = -g -pedantic -Wall -Wextra -Wdeclaration-after-statement -Wno-unused-parameter -Wshadow -Wunused-macros\
-	-Werror=strict-prototypes -Werror=implicit -Werror=return-type -Werror=incompatible-pointer-types -Wfloat-conversion
+DWLDEVCFLAGS = -g0 -Wpedantic -Wall -Wextra -Wdeclaration-after-statement -Wno-unused-parameter -Wshadow -Wunused-macros\
+	-Werror -Werror=strict-prototypes -Werror=implicit -Werror=return-type -Werror=incompatible-pointer-types -Wfloat-conversion
 
 # CFLAGS / LDFLAGS
-CFLAGS    = -march=native -O2 -DNDEBUG -g0 -Werror -Wpedantic -Wall -fno-semantic-interposition -fomit-frame-pointer -pipe -flto
+CFLAGS    = -march=native -Os -DNDEBUG -g0 -Werror -Wpedantic -Wall -Wextra -fno-semantic-interposition -fomit-frame-pointer -pipe -flto
 PKGS      = wlroots wayland-server xkbcommon libinput $(XLIBS)
 DWLCFLAGS = `$(PKG_CONFIG) --cflags $(PKGS)` $(DWLCPPFLAGS) $(DWLDEVCFLAGS) $(CFLAGS)
 LDLIBS    = `$(PKG_CONFIG) --libs $(PKGS)` $(LIBS)
