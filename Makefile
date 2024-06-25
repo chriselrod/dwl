@@ -16,10 +16,9 @@ LDLIBS    = `$(PKG_CONFIG) --libs $(PKGS)` $(LIBS)
 
 all: dwl
 	strip dwl
-dwl: dwl.o util.o
-	$(CC) -Werror dwl.o util.o $(DWLCFLAGS) $(LDFLAGS) $(LDLIBS) -o $@
+dwl: dwl.o
+	$(CC) dwl.o $(DWLCFLAGS) $(LDFLAGS) $(LDLIBS) -o $@
 dwl.o: dwl.c client.h config.h config.mk cursor-shape-v1-protocol.h pointer-constraints-unstable-v1-protocol.h wlr-layer-shell-unstable-v1-protocol.h xdg-shell-protocol.h
-util.o: util.c util.h
 
 # wayland-scanner is a tool which generates C headers and rigging for Wayland
 # protocols, which are specified in XML. wlroots requires you to rig these up
@@ -46,7 +45,7 @@ clean:
 dist: clean
 	mkdir -p dwl-$(VERSION)
 	cp -R LICENSE* Makefile CHANGELOG.md README.md client.h\
-		config.mk protocols dwl.1 dwl.c util.c util.h dwl.desktop\
+		config.mk protocols dwl.1 dwl.c dwl.desktop\
 		dwl-$(VERSION)
 	tar -caf dwl-$(VERSION).tar.gz dwl-$(VERSION)
 	rm -rf dwl-$(VERSION)

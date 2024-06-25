@@ -65,7 +65,30 @@
 #include <xcb/xcb_icccm.h>
 #endif
 
-#include "util.h"
+__attribute__((noinline)) static void die(const char *fmt, ...) {
+  va_list ap;
+
+  va_start(ap, fmt);
+  vfprintf(stderr, fmt, ap);
+  va_end(ap);
+
+  if (fmt[0] && fmt[strlen(fmt) - 1] == ':') {
+    fputc(' ', stderr);
+    perror(NULL);
+  } else {
+    fputc('\n', stderr);
+  }
+
+  exit(1);
+}
+
+static void *ecalloc(size_t nmemb, size_t size) {
+  void *p;
+
+  if (!(p = calloc(nmemb, size)))
+    die("calloc:");
+  return p;
+}
 
 /* macros */
 #define MAX(A, B) ((A) > (B) ? (A) : (B))
