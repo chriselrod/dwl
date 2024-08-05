@@ -1,7 +1,49 @@
 [
-{
-  "directory": "/home/chriselrod/.config/configdir/modules/dwl",
-  "command": "c99 -DXWAYLAND -I/usr/include/pixman-1 -I/usr/include/libdrm -I. -DWLR_USE_UNSTABLE -D_POSIX_C_SOURCE=200809L -g -pedantic -Wall -Wextra -Wdeclaration-after-statement -Wno-unused-parameter -Wshadow -Wunused-macros -Werror=strict-prototypes -Werror=implicit -Werror=return-type -Werror=incompatible-pointer-types -Wfloat-conversion -march=native -mtune=native -O3 -pipe -fomit-frame-pointer  -lwlroots -lwayland-server -lxkbcommon -linput -lxcb -lxcb-icccm",
-  "file": "/home/chriselrod/.config/configdir/modules/dwl/dwl.c"
-}
+  {
+    "arguments": [
+      "/usr/bin/gcc",
+      "-I/usr/include/wlroots-0.18",
+      "-I/usr/include/pixman-1",
+      "-I/usr/include/libdrm",
+      "-I.",
+      "-DWLR_USE_UNSTABLE",
+      "-D_POSIX_C_SOURCE=200809L",
+      "-DVERSION=\"0.5\"",
+      "-DXWAYLAND",
+      "-g0",
+      "-Wpedantic",
+      "-Wall",
+      "-Wextra",
+      "-Wdeclaration-after-statement",
+      "-Wno-unused-parameter",
+      "-Wshadow",
+      "-Wunused-macros",
+      "-Werror",
+      "-Werror=strict-prototypes",
+      "-Werror=implicit",
+      "-Werror=return-type",
+      "-Werror=incompatible-pointer-types",
+      "-Wfloat-conversion",
+      "-march=native",
+      "-Os",
+      "-DNDEBUG",
+      "-g0",
+      "-Werror",
+      "-Wpedantic",
+      "-Wall",
+      "-Wextra",
+      "-fno-semantic-interposition",
+      "-fomit-frame-pointer",
+      "-pipe",
+      "-flto",
+      "-DWLROOTS=18",
+      "-c",
+      "-o",
+      "dwl.o",
+      "dwl.c"
+    ],
+    "directory": "/home/chriselrod/.config/configdir/modules/dwl",
+    "file": "/home/chriselrod/.config/configdir/modules/dwl/dwl.c",
+    "output": "/home/chriselrod/.config/configdir/modules/dwl/dwl.o"
+  }
 ]

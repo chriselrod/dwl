@@ -8,11 +8,24 @@ DWLCPPFLAGS = -I. -DWLR_USE_UNSTABLE -D_POSIX_C_SOURCE=200809L -DVERSION=\"$(VER
 DWLDEVCFLAGS = -g0 -Wpedantic -Wall -Wextra -Wdeclaration-after-statement -Wno-unused-parameter -Wshadow -Wunused-macros\
 	-Werror -Werror=strict-prototypes -Werror=implicit -Werror=return-type -Werror=incompatible-pointer-types -Wfloat-conversion
 
+
 # CFLAGS / LDFLAGS
 CFLAGS    = -march=native -Os -DNDEBUG -g0 -Werror -Wpedantic -Wall -Wextra -fno-semantic-interposition -fomit-frame-pointer -pipe -flto
-PKGS      = wlroots wayland-server xkbcommon libinput $(XLIBS)
+PKGS      = wayland-server xkbcommon libinput $(XLIBS)
+
+WLROOTS_FOUND := $(pkg-config --exists wlroots-0.18 . 2> /dev/null; echo $$?)
+
+ifeq ($(WLROOTS_FOUND),1)
+  PKGS += wlroots
+  CFLAGS += -DWLROOTS=17
+else
+  PKGS += wlroots-0.18
+  CFLAGS += -DWLROOTS=18
+endif
+
 DWLCFLAGS = `$(PKG_CONFIG) --cflags $(PKGS)` $(DWLCPPFLAGS) $(DWLDEVCFLAGS) $(CFLAGS)
 LDLIBS    = `$(PKG_CONFIG) --libs $(PKGS)` $(LIBS)
+CC := gcc
 
 all: dwl
 	strip dwl
