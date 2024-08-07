@@ -2433,6 +2433,7 @@ void run(char *startup_cmd) {
   if (!wlr_backend_start(backend))
     die("startup: backend_start");
   spawn1("/usr/bin/foot", "-s");
+  spawn1("/home/chriselrod/.cargo/bin/kak-tree-sitter", "-s");
   /* Now that the socket exists and the backend is started, run the startup
    * command */
   if (startup_cmd) {
