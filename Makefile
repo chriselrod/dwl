@@ -14,17 +14,17 @@ CFLAGS    = -march=native -Os -DNDEBUG -g0 -Werror -Wpedantic -Wall -Wextra -fno
 PKGS      = wayland-server xkbcommon libinput $(XLIBS)
 
 WLROOTS18_FOUND := $(pkg-config --exists wlroots-0.18 . 2> /dev/null; echo $$?)
-ifeq ($(WLROOTS18_FOUND),1)
-  PKGS += wlroots
-  WLROOTSVER18_FOUND := $(pkg-config --atleast-version 0.18 --exists wlroots . 2> /dev/null; echo $$?)
-  ifeq ($(WLROOTS18_FOUND),1)
-    CFLAGS += -DWLROOTS=17
-  else
-    CFLAGS += -DWLROOTS=18
-  endif
-else
+ifeq ($(WLROOTS18_FOUND),0)
   PKGS += wlroots-0.18
   CFLAGS += -DWLROOTS=18
+else
+  PKGS += wlroots
+  WLROOTSVER18_FOUND := $(pkg-config --atleast-version 0.18 --exists wlroots . 2> /dev/null; echo $$?)
+  ifeq ($(WLROOTS18_FOUND),0)
+    CFLAGS += -DWLROOTS=18
+  else
+    CFLAGS += -DWLROOTS=17
+  endif
 endif
 
 DWLCFLAGS = `$(PKG_CONFIG) --cflags $(PKGS)` $(DWLCPPFLAGS) $(DWLDEVCFLAGS) $(CFLAGS)
