@@ -372,6 +372,7 @@ static void setup(int);
 // static void spawn(const char *);
 static void spawn1(const char *, const char *);
 static void spawn2(const char *, const char *, const char *);
+static void spawn3(const char *, const char *, const char *, const char *);
 static void startdrag(struct wl_listener *listener, void *data);
 static void tag(uint32_t);
 static void tagmon(int);
@@ -1589,6 +1590,16 @@ void spawn2(const char *cmd, const char *arg0, const char *arg1) {
   }
 }
 
+void spawn3(const char *cmd, const char *arg0, const char *arg1,
+            const char *arg2) {
+  if (fork() == 0) {
+    dup2(STDERR_FILENO, STDOUT_FILENO);
+    setsid();
+    execl(cmd, cmd, arg0, arg1, arg2, NULL);
+    die("dwl: execvp %s failed:", cmd);
+  }
+}
+
 void movestack(int i) {
   Client *c, *sel = focustop(selmon);
   if (!sel) {
@@ -1688,9 +1699,10 @@ int keybinding(uint32_t mods, xkb_keysym_t sym) {
       view((uint32_t)1 << (uint32_t)(sym - XKB_KEY_1));
       return 1;
     case XKB_KEY_r:
-      spawn2("/home/chriselrod/.local/bin/tofi-drun", "--drun-launch=true",
+      spawn3("/home/chriselrod/.local/bin/tofi-drun", "--drun-launch=true",
              "--font=/usr/share/fonts/iosevka-term-curly-fonts/"
-             "IosevkaTermCurly-Regular.ttf");
+             "IosevkaTermCurly-Regular.ttf",
+             "--ascii-input");
       return 1;
     case XKB_KEY_q:
       // spawn("/usr/bin/foot");
