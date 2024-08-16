@@ -17,6 +17,7 @@
 #include <wlr/backend/libinput.h>
 #include <wlr/render/allocator.h>
 #include <wlr/render/wlr_renderer.h>
+#include <wlr/types/wlr_alpha_modifier_v1.h>
 #include <wlr/types/wlr_compositor.h>
 #include <wlr/types/wlr_cursor.h>
 #include <wlr/types/wlr_cursor_shape_v1.h>
@@ -278,38 +279,42 @@ typedef struct {
 } SessionLock;
 
 /* function declarations */
+static KeyboardGroup *createkeyboardgroup(void);
+static Monitor *dirtomon(enum wlr_direction dir);
 static void applybounds(Client *c, struct wlr_box *bbox);
 static void applyrules(Client *c);
-static void arrange(Monitor *m);
 static void arrangelayer(Monitor *m, struct wl_list *list,
                          struct wlr_box *usable_area, int exclusive);
 static void arrangelayers(Monitor *m);
+static void arrange(Monitor *m);
 static void axisnotify(struct wl_listener *listener, void *data);
 static void buttonpress(struct wl_listener *listener, void *data);
-static void chvt(uint32_t);
 static void checkidleinhibitor(struct wlr_surface *exclude);
-static void cleanup(void);
+static void chvt(uint32_t);
 static void cleanupmon(struct wl_listener *listener, void *data);
+static void cleanup(void);
 static void closemon(Monitor *m);
 static void collayout(Monitor *m);
 static void commitlayersurfacenotify(struct wl_listener *listener, void *data);
 static void commitnotify(struct wl_listener *listener, void *data);
+static void commitpopup(struct wl_listener *listener, void *data);
 static void createdecoration(struct wl_listener *listener, void *data);
 static void createidleinhibitor(struct wl_listener *listener, void *data);
 static void createkeyboard(struct wlr_keyboard *keyboard);
-static KeyboardGroup *createkeyboardgroup(void);
 static void createlayersurface(struct wl_listener *listener, void *data);
 static void createlocksurface(struct wl_listener *listener, void *data);
 static void createmon(struct wl_listener *listener, void *data);
 static void createnotify(struct wl_listener *listener, void *data);
-static void createpointer(struct wlr_pointer *pointer);
 static void createpointerconstraint(struct wl_listener *listener, void *data);
+static void createpointer(struct wlr_pointer *pointer);
+static void createpopup(struct wl_listener *listener, void *data);
 static void cursorconstrain(struct wlr_pointer_constraint_v1 *constraint);
 static void cursorframe(struct wl_listener *listener, void *data);
 static void cursorwarptohint(void);
 static void destroydecoration(struct wl_listener *listener, void *data);
 static void destroydragicon(struct wl_listener *listener, void *data);
 static void destroyidleinhibitor(struct wl_listener *listener, void *data);
+static void destroykeyboardgroup(struct wl_listener *listener, void *data);
 static void destroylayersurfacenotify(struct wl_listener *listener, void *data);
 static void destroylock(SessionLock *lock, int unlocked);
 static void destroylocksurface(struct wl_listener *listener, void *data);
@@ -317,11 +322,10 @@ static void destroynotify(struct wl_listener *listener, void *data);
 static void destroypointerconstraint(struct wl_listener *listener, void *data);
 static void destroysessionlock(struct wl_listener *listener, void *data);
 static void destroysessionmgr(struct wl_listener *listener, void *data);
-static void destroykeyboardgroup(struct wl_listener *listener, void *data);
-static Monitor *dirtomon(enum wlr_direction dir);
 static void focusclient(Client *c, int lift);
 static void focusmon(int);
 static void focusstack(int);
+static void gpureset(struct wl_listener *listener, void *data);
 // static void focusstack(const Arg *arg);
 static Client *focustop(Monitor *m);
 static void fullscreennotify(struct wl_listener *listener, void *data);
@@ -334,7 +338,7 @@ static void keypressmod(struct wl_listener *listener, void *data);
 static int keyrepeat(void *data);
 static void killclient(void);
 static void locksession(struct wl_listener *listener, void *data);
-static void maplayersurfacenotify(struct wl_listener *listener, void *data);
+// static void maplayersurfacenotify(struct wl_listener *listener, void *data);
 static void mapnotify(struct wl_listener *listener, void *data);
 static void maximizenotify(struct wl_listener *listener, void *data);
 // static void monocle(Monitor *m);
@@ -371,7 +375,7 @@ static void setsel(struct wl_listener *listener, void *data);
 static void setup(int);
 // static void spawn(const char *);
 static void spawn1(const char *, const char *);
-static void spawn2(const char *, const char *, const char *);
+// static void spawn2(const char *, const char *, const char *);
 static void spawn3(const char *, const char *, const char *, const char *);
 static void startdrag(struct wl_listener *listener, void *data);
 static void tag(uint32_t);
@@ -402,6 +406,7 @@ static int locked;
 static void *exclusive_focus;
 static struct wl_display *dpy;
 static struct wlr_backend *backend;
+static struct wl_event_loop *event_loop;
 static struct wlr_scene *scene;
 static struct wlr_scene_tree *layers[NUM_LAYERS];
 static struct wlr_scene_tree *drag_icon;
@@ -533,7 +538,7 @@ void arrange(Monitor *m) {
   /* We move all clients (except fullscreen and unmanaged) to LyrTile while
    * in floating layout to avoid "real" floating clients be always on top */
   wl_list_for_each(c, &clients, link) {
-    if (c->mon != m || c->isfullscreen)
+    if (c->mon != m || c->scene->node.parent == layers[LyrFS])
       continue;
 
     wlr_scene_node_reparent(&c->scene->node, c->isfloating
@@ -606,10 +611,7 @@ void arrangelayers(Monitor *m) {
   }
 }
 
-#pragma GCC diagnostic push
-#pragma GCC diagnostic ignored "-Wunused-parameter"
-void axisnotify(struct wl_listener *listener, void *data) {
-#pragma GCC diagnostic pop
+void axisnotify(struct wl_listener *, void *data) {
   /* This event is forwarded by the cursor when a pointer emits an axis event,
    * for example when you move the scroll wheel. */
   struct wlr_pointer_axis_event *event = data;
@@ -617,22 +619,12 @@ void axisnotify(struct wl_listener *listener, void *data) {
   /* TODO: allow usage of scroll whell for mousebindings, it can be implemented
    * checking the event's orientation and the delta of the event */
   /* Notify the client with pointer focus of the axis event. */
-#if WLROOTS >= 18
   wlr_seat_pointer_notify_axis(seat, event->time_msec, event->orientation,
                                event->delta, event->delta_discrete,
-                               event->source,
-                               WL_POINTER_AXIS_RELATIVE_DIRECTION_IDENTICAL);
-#else
-  wlr_seat_pointer_notify_axis(seat, event->time_msec, event->orientation,
-                               event->delta, event->delta_discrete,
-                               event->source);
-#endif
+                               event->source, event->relative_direction);
 }
 
-#pragma GCC diagnostic push
-#pragma GCC diagnostic ignored "-Wunused-parameter"
-void buttonpress(struct wl_listener *listener, void *data) {
-#pragma GCC diagnostic pop
+void buttonpress(struct wl_listener *, void *data) {
   struct wlr_pointer_button_event *event = data;
   struct wlr_keyboard *keyboard;
   uint32_t mods;
@@ -641,7 +633,7 @@ void buttonpress(struct wl_listener *listener, void *data) {
   wlr_idle_notifier_v1_notify_activity(idle_notifier, seat);
 
   switch (event->state) {
-  case WLR_BUTTON_PRESSED:
+  case WL_POINTER_BUTTON_STATE_PRESSED:
     cursor_mode = CurPressed;
     if (locked)
       break;
@@ -669,7 +661,7 @@ void buttonpress(struct wl_listener *listener, void *data) {
       }
     }
     break;
-  case WLR_BUTTON_RELEASED:
+  case WL_POINTER_BUTTON_STATE_RELEASED:
     /* If you released any buttons, we exit interactive move/resize mode. */
     /* TODO should reset to the pointer focus's current setcursor */
     if (!locked && cursor_mode != CurNormal && cursor_mode != CurPressed) {
@@ -722,9 +714,11 @@ void cleanup(void) {
     waitpid(child_pid, NULL, 0);
   }
   wlr_xcursor_manager_destroy(cursor_mgr);
-  wlr_output_layout_destroy(output_layout);
 
   destroykeyboardgroup(&kb_group->destroy, NULL);
+  /* If it's not destroyed manually it will cause a use-after-free of wlr_seat.
+   * Destroy it until it's fixed in the wlroots side */
+  wlr_backend_destroy(backend);
 
   wl_display_destroy(dpy);
   /* Destroy after the wayland display (when the monitors are already destroyed)
@@ -732,10 +726,7 @@ void cleanup(void) {
   wlr_scene_node_destroy(&scene->tree.node);
 }
 
-#pragma GCC diagnostic push
-#pragma GCC diagnostic ignored "-Wunused-parameter"
-void cleanupmon(struct wl_listener *listener, void *data) {
-#pragma GCC diagnostic pop
+void cleanupmon(struct wl_listener *listener, void *) {
   Monitor *m = wl_container_of(listener, m, destroy);
   LayerSurface *l, *tmp;
   size_t i;
@@ -807,14 +798,27 @@ void collayout(Monitor *m) {
   }
 }
 
-#pragma GCC diagnostic push
-#pragma GCC diagnostic ignored "-Wunused-parameter"
-void commitlayersurfacenotify(struct wl_listener *listener, void *data) {
-#pragma GCC diagnostic pop
+void commitlayersurfacenotify(struct wl_listener *listener, void *) {
   LayerSurface *l = wl_container_of(listener, l, surface_commit);
   struct wlr_layer_surface_v1 *layer_surface = l->layer_surface;
   struct wlr_scene_tree *scene_layer =
       layers[layermap[layer_surface->current.layer]];
+  struct wlr_layer_surface_v1_state old_state;
+
+  if (l->layer_surface->initial_commit) {
+    wlr_fractional_scale_v1_notify_scale(layer_surface->surface,
+                                         l->mon->wlr_output->scale);
+    wlr_surface_set_preferred_buffer_scale(
+        layer_surface->surface, (int32_t)ceilf(l->mon->wlr_output->scale));
+
+    /* Temporarily set the layer's current state to pending
+     * so that we can easily arrange it */
+    old_state = l->layer_surface->current;
+    l->layer_surface->current = l->layer_surface->pending;
+    arrangelayers(l->mon);
+    l->layer_surface->current = old_state;
+    return;
+  }
 
   if (layer_surface->current.committed == 0 &&
       l->mapped == layer_surface->surface->mapped)
@@ -835,11 +839,30 @@ void commitlayersurfacenotify(struct wl_listener *listener, void *data) {
   arrangelayers(l->mon);
 }
 
-#pragma GCC diagnostic push
-#pragma GCC diagnostic ignored "-Wunused-parameter"
-void commitnotify(struct wl_listener *listener, void *data) {
-#pragma GCC diagnostic pop
+void commitnotify(struct wl_listener *listener, void *) {
   Client *c = wl_container_of(listener, c, commit);
+
+  if (c->surface.xdg->initial_commit) {
+    /*
+     * Get the monitor this client will be rendered on
+     * Note that if the user set a rule in which the client is placed on
+     * a different monitor based on its title this will likely select
+     * a wrong monitor.
+     */
+    applyrules(c);
+    wlr_surface_set_preferred_buffer_scale(
+        client_surface(c), (int)ceilf(c->mon->wlr_output->scale));
+    wlr_fractional_scale_v1_notify_scale(client_surface(c),
+                                         c->mon->wlr_output->scale);
+    setmon(c, NULL, 0); /* Make sure to reapply rules in mapnotify() */
+
+    wlr_xdg_toplevel_set_wm_capabilities(
+        c->surface.xdg->toplevel, WLR_XDG_TOPLEVEL_WM_CAPABILITIES_FULLSCREEN);
+    wlr_xdg_toplevel_set_size(c->surface.xdg->toplevel, 0, 0);
+    if (c->decoration)
+      requestdecorationmode(&c->set_decoration_mode, c->decoration);
+    return;
+  }
 
   if (client_surface(c)->mapped && c->mon)
     resize(c, c->geom, (c->isfloating && !c->isfullscreen));
@@ -849,10 +872,32 @@ void commitnotify(struct wl_listener *listener, void *data) {
     c->resize = 0;
 }
 
-#pragma GCC diagnostic push
-#pragma GCC diagnostic ignored "-Wunused-parameter"
-void createdecoration(struct wl_listener *listener, void *data) {
-#pragma GCC diagnostic pop
+void commitpopup(struct wl_listener *listener, void *data) {
+  struct wlr_surface *surface = data;
+  struct wlr_xdg_popup *popup = wlr_xdg_popup_try_from_wlr_surface(surface);
+  LayerSurface *l = NULL;
+  Client *c = NULL;
+  struct wlr_box box;
+  int type = -1;
+
+  if (!popup->base->initial_commit)
+    return;
+
+  type = toplevel_from_wlr_surface(popup->base->surface, &c, &l);
+  if (!popup->parent || type < 0)
+    return;
+  popup->base->surface->data =
+      wlr_scene_xdg_surface_create(popup->parent->data, popup->base);
+  if ((l && !l->mon) || (c && !c->mon))
+    return;
+  box = type == LayerShell ? l->mon->m : c->mon->w;
+  box.x -= (type == LayerShell ? l->geom.x : c->geom.x);
+  box.y -= (type == LayerShell ? l->geom.y : c->geom.y);
+  wlr_xdg_popup_unconstrain_from_box(popup, &box);
+  wl_list_remove(&listener->link);
+}
+
+void createdecoration(struct wl_listener *, void *data) {
   struct wlr_xdg_toplevel_decoration_v1 *deco = data;
   Client *c = deco->toplevel->base->data;
   c->decoration = deco;
@@ -864,10 +909,7 @@ void createdecoration(struct wl_listener *listener, void *data) {
   requestdecorationmode(&c->set_decoration_mode, deco);
 }
 
-#pragma GCC diagnostic push
-#pragma GCC diagnostic ignored "-Wunused-parameter"
-void createidleinhibitor(struct wl_listener *listener, void *data) {
-#pragma GCC diagnostic pop
+void createidleinhibitor(struct wl_listener *, void *data) {
   struct wlr_idle_inhibitor_v1 *idle_inhibitor = data;
   LISTEN_STATIC(&idle_inhibitor->events.destroy, destroyidleinhibitor);
 
@@ -909,7 +951,7 @@ KeyboardGroup *createkeyboardgroup(void) {
          keypressmod);
 
   group->key_repeat_source =
-      wl_event_loop_add_timer(wl_display_get_event_loop(dpy), keyrepeat, group);
+      wl_event_loop_add_timer(event_loop, keyrepeat, group);
 
   /* A seat can only have one keyboard, but this is a limitation of the
    * Wayland protocol - not wlroots. We assign all connected keyboards to the
@@ -920,16 +962,12 @@ KeyboardGroup *createkeyboardgroup(void) {
   return group;
 }
 
-#pragma GCC diagnostic push
-#pragma GCC diagnostic ignored "-Wunused-parameter"
-void createlayersurface(struct wl_listener *listener, void *data) {
-#pragma GCC diagnostic pop
+void createlayersurface(struct wl_listener *, void *data) {
   struct wlr_layer_surface_v1 *layer_surface = data;
   LayerSurface *l;
   struct wlr_surface *surface = layer_surface->surface;
   struct wlr_scene_tree *scene_layer =
       layers[layermap[layer_surface->pending.layer]];
-  struct wlr_layer_surface_v1_state old_state;
 
   if (!layer_surface->output &&
       !(layer_surface->output = selmon ? selmon->wlr_output : NULL)) {
@@ -940,7 +978,6 @@ void createlayersurface(struct wl_listener *listener, void *data) {
   l = layer_surface->data = ecalloc(1, sizeof(*l));
   l->type = LayerShell;
   LISTEN(&surface->events.commit, &l->surface_commit, commitlayersurfacenotify);
-  LISTEN(&surface->events.map, &l->map, maplayersurfacenotify);
   LISTEN(&surface->events.unmap, &l->unmap, unmaplayersurfacenotify);
   LISTEN(&layer_surface->events.destroy, &l->destroy,
          destroylayersurfacenotify);
@@ -958,15 +995,6 @@ void createlayersurface(struct wl_listener *listener, void *data) {
 
   wl_list_insert(&l->mon->layers[layer_surface->pending.layer], &l->link);
   wlr_surface_send_enter(surface, layer_surface->output);
-
-  /* Temporarily set the layer's current state to pending
-   * so that we can easily arrange it
-   */
-  old_state = layer_surface->current;
-  layer_surface->current = layer_surface->pending;
-  l->mapped = 1;
-  arrangelayers(l->mon);
-  layer_surface->current = old_state;
 }
 
 void createlocksurface(struct wl_listener *listener, void *data) {
@@ -987,10 +1015,264 @@ void createlocksurface(struct wl_listener *listener, void *data) {
     client_notify_enter(lock_surface->surface, wlr_seat_get_keyboard(seat));
 }
 
-#pragma GCC diagnostic push
-#pragma GCC diagnostic ignored "-Wunused-parameter"
-void createmon(struct wl_listener *listener, void *data) {
-#pragma GCC diagnostic pop
+void createnotify(struct wl_listener *, void *data) {
+  /* This event is raised when a client creates a new toplevel (application
+   * window). */
+  struct wlr_xdg_toplevel *toplevel = data;
+  Client *c = NULL;
+
+  /* Allocate a Client for this surface */
+  c = toplevel->base->data = ecalloc(1, sizeof(*c));
+  c->surface.xdg = toplevel->base;
+  c->bw = borderpx;
+
+  LISTEN(&toplevel->base->surface->events.commit, &c->commit, commitnotify);
+  LISTEN(&toplevel->base->surface->events.map, &c->map, mapnotify);
+  LISTEN(&toplevel->base->surface->events.unmap, &c->unmap, unmapnotify);
+  LISTEN(&toplevel->events.destroy, &c->destroy, destroynotify);
+  LISTEN(&toplevel->events.request_fullscreen, &c->fullscreen,
+         fullscreennotify);
+  LISTEN(&toplevel->events.request_maximize, &c->maximize, maximizenotify);
+  LISTEN(&toplevel->events.set_title, &c->set_title, updatetitle);
+}
+
+void createpointer(struct wlr_pointer *pointer) {
+  struct libinput_device *device;
+  if (wlr_input_device_is_libinput(&pointer->base) &&
+      (device = wlr_libinput_get_device_handle(&pointer->base))) {
+
+    if (libinput_device_config_tap_get_finger_count(device)) {
+      libinput_device_config_tap_set_enabled(device, tap_to_click);
+      libinput_device_config_tap_set_drag_enabled(device, tap_and_drag);
+      libinput_device_config_tap_set_drag_lock_enabled(device, drag_lock);
+      libinput_device_config_tap_set_button_map(device, button_map);
+    }
+
+    if (libinput_device_config_scroll_has_natural_scroll(device))
+      libinput_device_config_scroll_set_natural_scroll_enabled(
+          device, natural_scrolling);
+
+    if (libinput_device_config_dwt_is_available(device))
+      libinput_device_config_dwt_set_enabled(device, disable_while_typing);
+
+    if (libinput_device_config_left_handed_is_available(device))
+      libinput_device_config_left_handed_set(device, left_handed);
+
+    if (libinput_device_config_middle_emulation_is_available(device))
+      libinput_device_config_middle_emulation_set_enabled(
+          device, middle_button_emulation);
+
+    if (libinput_device_config_scroll_get_methods(device) !=
+        LIBINPUT_CONFIG_SCROLL_NO_SCROLL)
+      libinput_device_config_scroll_set_method(device, scroll_method);
+
+    if (libinput_device_config_click_get_methods(device) !=
+        LIBINPUT_CONFIG_CLICK_METHOD_NONE)
+      libinput_device_config_click_set_method(device, click_method);
+
+    if (libinput_device_config_send_events_get_modes(device))
+      libinput_device_config_send_events_set_mode(device, send_events_mode);
+
+    if (libinput_device_config_accel_is_available(device)) {
+      libinput_device_config_accel_set_profile(device, accel_profile);
+      libinput_device_config_accel_set_speed(device, accel_speed);
+    }
+  }
+
+  wlr_cursor_attach_input_device(cursor, &pointer->base);
+}
+
+void createpointerconstraint(struct wl_listener *, void *data) {
+  PointerConstraint *pointer_constraint =
+      ecalloc(1, sizeof(*pointer_constraint));
+  pointer_constraint->constraint = data;
+  LISTEN(&pointer_constraint->constraint->events.destroy,
+         &pointer_constraint->destroy, destroypointerconstraint);
+}
+
+void createpopup(struct wl_listener *, void *data) {
+  /* This event is raised when a client (either xdg-shell or layer-shell)
+   * creates a new popup. */
+  struct wlr_xdg_popup *popup = data;
+  LISTEN_STATIC(&popup->base->surface->events.commit, commitpopup);
+}
+
+void cursorconstrain(struct wlr_pointer_constraint_v1 *constraint) {
+  if (active_constraint == constraint)
+    return;
+
+  if (active_constraint)
+    wlr_pointer_constraint_v1_send_deactivated(active_constraint);
+
+  active_constraint = constraint;
+  wlr_pointer_constraint_v1_send_activated(constraint);
+}
+
+void cursorframe(struct wl_listener *, void *) {
+  /* This event is forwarded by the cursor when a pointer emits an frame
+   * event. Frame events are sent after regular pointer events to group
+   * multiple events together. For instance, two axis events may happen at the
+   * same time, in which case a frame event won't be sent in between. */
+  /* Notify the client with pointer focus of the frame event. */
+  wlr_seat_pointer_notify_frame(seat);
+}
+
+void cursorwarptohint(void) {
+  Client *c = NULL;
+  double sx = active_constraint->current.cursor_hint.x;
+  double sy = active_constraint->current.cursor_hint.y;
+
+  toplevel_from_wlr_surface(active_constraint->surface, &c, NULL);
+  if (c && active_constraint->current.cursor_hint.enabled) {
+    wlr_cursor_warp(cursor, NULL, sx + c->geom.x + c->bw,
+                    sy + c->geom.y + c->bw);
+    wlr_seat_pointer_warp(active_constraint->seat, sx, sy);
+  }
+}
+
+void destroydecoration(struct wl_listener *listener, void *) {
+  Client *c = wl_container_of(listener, c, destroy_decoration);
+  c->decoration = NULL;
+
+  wl_list_remove(&c->destroy_decoration.link);
+  wl_list_remove(&c->set_decoration_mode.link);
+}
+
+void destroydragicon(struct wl_listener *, void *) {
+  /* Focus enter isn't sent during drag, so refocus the focused node. */
+  focusclient(focustop(selmon), 1);
+  motionnotify(0, NULL, 0, 0, 0, 0);
+}
+
+void destroyidleinhibitor(struct wl_listener *, void *data) {
+  /* `data` is the wlr_surface of the idle inhibitor being destroyed,
+   * at this point the idle inhibitor is still in the list of the manager */
+  checkidleinhibitor(wlr_surface_get_root_surface(data));
+}
+
+void destroylayersurfacenotify(struct wl_listener *listener, void *) {
+  LayerSurface *l = wl_container_of(listener, l, destroy);
+
+  wl_list_remove(&l->link);
+  wl_list_remove(&l->destroy.link);
+  wl_list_remove(&l->unmap.link);
+  wl_list_remove(&l->surface_commit.link);
+  wlr_scene_node_destroy(&l->scene->node);
+  wlr_scene_node_destroy(&l->popups->node);
+  free(l);
+}
+
+void destroylock(SessionLock *lock, int unlock) {
+  wlr_seat_keyboard_notify_clear_focus(seat);
+  if ((locked = !unlock))
+    goto destroy;
+
+  wlr_scene_node_set_enabled(&locked_bg->node, 0);
+
+  focusclient(focustop(selmon), 0);
+  motionnotify(0, NULL, 0, 0, 0, 0);
+
+destroy:
+  wl_list_remove(&lock->new_surface.link);
+  wl_list_remove(&lock->unlock.link);
+  wl_list_remove(&lock->destroy.link);
+
+  wlr_scene_node_destroy(&lock->scene->node);
+  cur_lock = NULL;
+  free(lock);
+}
+
+void destroylocksurface(struct wl_listener *listener, void *) {
+  Monitor *m = wl_container_of(listener, m, destroy_lock_surface);
+  struct wlr_session_lock_surface_v1 *surface, *lock_surface = m->lock_surface;
+
+  m->lock_surface = NULL;
+  wl_list_remove(&m->destroy_lock_surface.link);
+
+  if (lock_surface->surface != seat->keyboard_state.focused_surface)
+    return;
+
+  if (locked && cur_lock && !wl_list_empty(&cur_lock->surfaces)) {
+    surface = wl_container_of(cur_lock->surfaces.next, surface, link);
+    client_notify_enter(surface->surface, wlr_seat_get_keyboard(seat));
+  } else if (!locked) {
+    focusclient(focustop(selmon), 1);
+  } else {
+    wlr_seat_keyboard_clear_focus(seat);
+  }
+}
+
+void destroynotify(struct wl_listener *listener, void *) {
+  /* Called when the xdg_toplevel is destroyed. */
+  Client *c = wl_container_of(listener, c, destroy);
+  wl_list_remove(&c->destroy.link);
+  wl_list_remove(&c->set_title.link);
+  wl_list_remove(&c->fullscreen.link);
+#ifdef XWAYLAND
+  if (c->type != XDGShell) {
+    wl_list_remove(&c->activate.link);
+    wl_list_remove(&c->associate.link);
+    wl_list_remove(&c->configure.link);
+    wl_list_remove(&c->dissociate.link);
+    wl_list_remove(&c->set_hints.link);
+  } else
+#endif
+  {
+    wl_list_remove(&c->commit.link);
+    wl_list_remove(&c->map.link);
+    wl_list_remove(&c->unmap.link);
+  }
+  free(c);
+}
+
+void destroypointerconstraint(struct wl_listener *listener, void *) {
+  PointerConstraint *pointer_constraint =
+      wl_container_of(listener, pointer_constraint, destroy);
+
+  if (active_constraint == pointer_constraint->constraint) {
+    cursorwarptohint();
+    active_constraint = NULL;
+  }
+
+  wl_list_remove(&pointer_constraint->destroy.link);
+  free(pointer_constraint);
+}
+
+void destroysessionlock(struct wl_listener *listener, void *) {
+  SessionLock *lock = wl_container_of(listener, lock, destroy);
+  destroylock(lock, 0);
+}
+
+void destroysessionmgr(struct wl_listener *listener, void *) {
+  wl_list_remove(&lock_listener.link);
+  wl_list_remove(&listener->link);
+}
+
+void destroykeyboardgroup(struct wl_listener *listener, void *) {
+  KeyboardGroup *group = wl_container_of(listener, group, destroy);
+  wl_event_source_remove(group->key_repeat_source);
+  wlr_keyboard_group_destroy(group->wlr_group);
+  wl_list_remove(&group->key.link);
+  wl_list_remove(&group->modifiers.link);
+  wl_list_remove(&group->destroy.link);
+  free(group);
+}
+
+Monitor *dirtomon(enum wlr_direction dir) {
+  struct wlr_output *next;
+  if (!wlr_output_layout_get(output_layout, selmon->wlr_output))
+    return selmon;
+  if ((next = wlr_output_layout_adjacent_output(
+           output_layout, dir, selmon->wlr_output, selmon->m.x, selmon->m.y)))
+    return next->data;
+  if ((next = wlr_output_layout_farthest_output(
+           output_layout, dir ^ (WLR_DIRECTION_LEFT | WLR_DIRECTION_RIGHT),
+           selmon->wlr_output, selmon->m.x, selmon->m.y)))
+    return next->data;
+  return selmon;
+}
+
+void createmon(struct wl_listener *, void *data) {
   /* This event is raised by the backend when a new output (aka a display or
    * monitor) becomes available. */
   struct wlr_output *wlr_output = data;
@@ -1058,323 +1340,6 @@ void createmon(struct wl_listener *listener, void *data) {
     wlr_output_layout_add_auto(output_layout, wlr_output);
   else
     wlr_output_layout_add(output_layout, wlr_output, m->m.x, m->m.y);
-}
-
-#pragma GCC diagnostic push
-#pragma GCC diagnostic ignored "-Wunused-parameter"
-void createnotify(struct wl_listener *listener, void *data) {
-#pragma GCC diagnostic pop
-  /* This event is raised when wlr_xdg_shell receives a new xdg surface from a
-   * client, either a toplevel (application window) or popup,
-   * or when wlr_layer_shell receives a new popup from a layer.
-   * If you want to do something tricky with popups you should check if
-   * its parent is wlr_xdg_shell or wlr_layer_shell */
-  struct wlr_xdg_surface *xdg_surface = data;
-  Client *c = NULL;
-  LayerSurface *l = NULL;
-
-  if (xdg_surface->role == WLR_XDG_SURFACE_ROLE_POPUP) {
-    struct wlr_xdg_popup *popup = xdg_surface->popup;
-    struct wlr_box box;
-    if (toplevel_from_wlr_surface(popup->base->surface, &c, &l) < 0)
-      return;
-    popup->base->surface->data =
-        wlr_scene_xdg_surface_create(popup->parent->data, popup->base);
-    if ((l && !l->mon) || (c && !c->mon))
-      return;
-    box = l ? l->mon->m : c->mon->w;
-    box.x -= (l ? l->geom.x : c->geom.x);
-    box.y -= (l ? l->geom.y : c->geom.y);
-    wlr_xdg_popup_unconstrain_from_box(popup, &box);
-    return;
-  } else if (xdg_surface->role == WLR_XDG_SURFACE_ROLE_NONE)
-    return;
-
-  /* Allocate a Client for this surface */
-  c = xdg_surface->data = ecalloc(1, sizeof(*c));
-  c->surface.xdg = xdg_surface;
-  c->bw = borderpx;
-
-  wlr_xdg_toplevel_set_wm_capabilities(
-      xdg_surface->toplevel, WLR_XDG_TOPLEVEL_WM_CAPABILITIES_FULLSCREEN);
-
-  LISTEN(&xdg_surface->events.destroy, &c->destroy, destroynotify);
-  LISTEN(&xdg_surface->surface->events.commit, &c->commit, commitnotify);
-  LISTEN(&xdg_surface->surface->events.map, &c->map, mapnotify);
-  LISTEN(&xdg_surface->surface->events.unmap, &c->unmap, unmapnotify);
-  LISTEN(&xdg_surface->toplevel->events.request_fullscreen, &c->fullscreen,
-         fullscreennotify);
-  LISTEN(&xdg_surface->toplevel->events.request_maximize, &c->maximize,
-         maximizenotify);
-  LISTEN(&xdg_surface->toplevel->events.set_title, &c->set_title, updatetitle);
-}
-
-void createpointer(struct wlr_pointer *pointer) {
-  struct libinput_device *device;
-  if (wlr_input_device_is_libinput(&pointer->base) &&
-      (device = wlr_libinput_get_device_handle(&pointer->base))) {
-
-    if (libinput_device_config_tap_get_finger_count(device)) {
-      libinput_device_config_tap_set_enabled(device, tap_to_click);
-      libinput_device_config_tap_set_drag_enabled(device, tap_and_drag);
-      libinput_device_config_tap_set_drag_lock_enabled(device, drag_lock);
-      libinput_device_config_tap_set_button_map(device, button_map);
-    }
-
-    if (libinput_device_config_scroll_has_natural_scroll(device))
-      libinput_device_config_scroll_set_natural_scroll_enabled(
-          device, natural_scrolling);
-
-    if (libinput_device_config_dwt_is_available(device))
-      libinput_device_config_dwt_set_enabled(device, disable_while_typing);
-
-    if (libinput_device_config_left_handed_is_available(device))
-      libinput_device_config_left_handed_set(device, left_handed);
-
-    if (libinput_device_config_middle_emulation_is_available(device))
-      libinput_device_config_middle_emulation_set_enabled(
-          device, middle_button_emulation);
-
-    if (libinput_device_config_scroll_get_methods(device) !=
-        LIBINPUT_CONFIG_SCROLL_NO_SCROLL)
-      libinput_device_config_scroll_set_method(device, scroll_method);
-
-    if (libinput_device_config_click_get_methods(device) !=
-        LIBINPUT_CONFIG_CLICK_METHOD_NONE)
-      libinput_device_config_click_set_method(device, click_method);
-
-    if (libinput_device_config_send_events_get_modes(device))
-      libinput_device_config_send_events_set_mode(device, send_events_mode);
-
-    if (libinput_device_config_accel_is_available(device)) {
-      libinput_device_config_accel_set_profile(device, accel_profile);
-      libinput_device_config_accel_set_speed(device, accel_speed);
-    }
-  }
-
-  wlr_cursor_attach_input_device(cursor, &pointer->base);
-}
-
-#pragma GCC diagnostic push
-#pragma GCC diagnostic ignored "-Wunused-parameter"
-void createpointerconstraint(struct wl_listener *listener, void *data) {
-#pragma GCC diagnostic pop
-  PointerConstraint *pointer_constraint =
-      ecalloc(1, sizeof(*pointer_constraint));
-  pointer_constraint->constraint = data;
-  LISTEN(&pointer_constraint->constraint->events.destroy,
-         &pointer_constraint->destroy, destroypointerconstraint);
-}
-
-void cursorconstrain(struct wlr_pointer_constraint_v1 *constraint) {
-  if (active_constraint == constraint)
-    return;
-
-  if (active_constraint)
-    wlr_pointer_constraint_v1_send_deactivated(active_constraint);
-
-  active_constraint = constraint;
-  wlr_pointer_constraint_v1_send_activated(constraint);
-}
-
-#pragma GCC diagnostic push
-#pragma GCC diagnostic ignored "-Wunused-parameter"
-void cursorframe(struct wl_listener *listener, void *data) {
-#pragma GCC diagnostic pop
-  /* This event is forwarded by the cursor when a pointer emits an frame
-   * event. Frame events are sent after regular pointer events to group
-   * multiple events together. For instance, two axis events may happen at the
-   * same time, in which case a frame event won't be sent in between. */
-  /* Notify the client with pointer focus of the frame event. */
-  wlr_seat_pointer_notify_frame(seat);
-}
-
-void cursorwarptohint(void) {
-  Client *c = NULL;
-  double sx = active_constraint->current.cursor_hint.x;
-  double sy = active_constraint->current.cursor_hint.y;
-
-  toplevel_from_wlr_surface(active_constraint->surface, &c, NULL);
-  /* TODO: wlroots 0.18:
-   * https://gitlab.freedesktop.org/wlroots/wlroots/-/merge_requests/4478 */
-  if (c && (active_constraint->current.committed &
-            WLR_POINTER_CONSTRAINT_V1_STATE_CURSOR_HINT)) {
-    wlr_cursor_warp(cursor, NULL, sx + c->geom.x + c->bw,
-                    sy + c->geom.y + c->bw);
-    wlr_seat_pointer_warp(active_constraint->seat, sx, sy);
-  }
-}
-
-#pragma GCC diagnostic push
-#pragma GCC diagnostic ignored "-Wunused-parameter"
-void destroydecoration(struct wl_listener *listener, void *data) {
-#pragma GCC diagnostic pop
-  Client *c = wl_container_of(listener, c, destroy_decoration);
-
-  wl_list_remove(&c->destroy_decoration.link);
-  wl_list_remove(&c->set_decoration_mode.link);
-}
-
-#pragma GCC diagnostic push
-#pragma GCC diagnostic ignored "-Wunused-parameter"
-void destroydragicon(struct wl_listener *listener, void *data) {
-#pragma GCC diagnostic pop
-  /* Focus enter isn't sent during drag, so refocus the focused node. */
-  focusclient(focustop(selmon), 1);
-  motionnotify(0, NULL, 0, 0, 0, 0);
-}
-
-#pragma GCC diagnostic push
-#pragma GCC diagnostic ignored "-Wunused-parameter"
-void destroyidleinhibitor(struct wl_listener *listener, void *data) {
-#pragma GCC diagnostic pop
-  /* `data` is the wlr_surface of the idle inhibitor being destroyed,
-   * at this point the idle inhibitor is still in the list of the manager */
-  checkidleinhibitor(wlr_surface_get_root_surface(data));
-}
-
-#pragma GCC diagnostic push
-#pragma GCC diagnostic ignored "-Wunused-parameter"
-void destroylayersurfacenotify(struct wl_listener *listener, void *data) {
-#pragma GCC diagnostic pop
-  LayerSurface *l = wl_container_of(listener, l, destroy);
-
-  wl_list_remove(&l->link);
-  wl_list_remove(&l->destroy.link);
-  wl_list_remove(&l->map.link);
-  wl_list_remove(&l->unmap.link);
-  wl_list_remove(&l->surface_commit.link);
-  wlr_scene_node_destroy(&l->scene->node);
-  wlr_scene_node_destroy(&l->popups->node);
-  free(l);
-}
-
-void destroylock(SessionLock *lock, int unlock) {
-  wlr_seat_keyboard_notify_clear_focus(seat);
-  if ((locked = !unlock))
-    goto destroy;
-
-  wlr_scene_node_set_enabled(&locked_bg->node, 0);
-
-  focusclient(focustop(selmon), 0);
-  motionnotify(0, NULL, 0, 0, 0, 0);
-
-destroy:
-  wl_list_remove(&lock->new_surface.link);
-  wl_list_remove(&lock->unlock.link);
-  wl_list_remove(&lock->destroy.link);
-
-  wlr_scene_node_destroy(&lock->scene->node);
-  cur_lock = NULL;
-  free(lock);
-}
-
-#pragma GCC diagnostic push
-#pragma GCC diagnostic ignored "-Wunused-parameter"
-void destroylocksurface(struct wl_listener *listener, void *data) {
-#pragma GCC diagnostic pop
-  Monitor *m = wl_container_of(listener, m, destroy_lock_surface);
-  struct wlr_session_lock_surface_v1 *surface, *lock_surface = m->lock_surface;
-
-  m->lock_surface = NULL;
-  wl_list_remove(&m->destroy_lock_surface.link);
-
-  if (lock_surface->surface != seat->keyboard_state.focused_surface)
-    return;
-
-  if (locked && cur_lock && !wl_list_empty(&cur_lock->surfaces)) {
-    surface = wl_container_of(cur_lock->surfaces.next, surface, link);
-    client_notify_enter(surface->surface, wlr_seat_get_keyboard(seat));
-  } else if (!locked) {
-    focusclient(focustop(selmon), 1);
-  } else {
-    wlr_seat_keyboard_clear_focus(seat);
-  }
-}
-
-#pragma GCC diagnostic push
-#pragma GCC diagnostic ignored "-Wunused-parameter"
-void destroynotify(struct wl_listener *listener, void *data) {
-#pragma GCC diagnostic pop
-  /* Called when the xdg_toplevel is destroyed. */
-  Client *c = wl_container_of(listener, c, destroy);
-  wl_list_remove(&c->destroy.link);
-  wl_list_remove(&c->set_title.link);
-  wl_list_remove(&c->fullscreen.link);
-#ifdef XWAYLAND
-  if (c->type != XDGShell) {
-    wl_list_remove(&c->activate.link);
-    wl_list_remove(&c->associate.link);
-    wl_list_remove(&c->configure.link);
-    wl_list_remove(&c->dissociate.link);
-    wl_list_remove(&c->set_hints.link);
-  } else
-#endif
-  {
-    wl_list_remove(&c->commit.link);
-    wl_list_remove(&c->map.link);
-    wl_list_remove(&c->unmap.link);
-  }
-  free(c);
-}
-
-#pragma GCC diagnostic push
-#pragma GCC diagnostic ignored "-Wunused-parameter"
-void destroypointerconstraint(struct wl_listener *listener, void *data) {
-#pragma GCC diagnostic pop
-  PointerConstraint *pointer_constraint =
-      wl_container_of(listener, pointer_constraint, destroy);
-
-  if (active_constraint == pointer_constraint->constraint) {
-    cursorwarptohint();
-    active_constraint = NULL;
-  }
-
-  wl_list_remove(&pointer_constraint->destroy.link);
-  free(pointer_constraint);
-}
-
-#pragma GCC diagnostic push
-#pragma GCC diagnostic ignored "-Wunused-parameter"
-void destroysessionlock(struct wl_listener *listener, void *data) {
-#pragma GCC diagnostic pop
-  SessionLock *lock = wl_container_of(listener, lock, destroy);
-  destroylock(lock, 0);
-}
-
-#pragma GCC diagnostic push
-#pragma GCC diagnostic ignored "-Wunused-parameter"
-void destroysessionmgr(struct wl_listener *listener, void *data) {
-#pragma GCC diagnostic pop
-  wl_list_remove(&lock_listener.link);
-  wl_list_remove(&listener->link);
-}
-
-#pragma GCC diagnostic push
-#pragma GCC diagnostic ignored "-Wunused-parameter"
-void destroykeyboardgroup(struct wl_listener *listener, void *data) {
-#pragma GCC diagnostic pop
-  KeyboardGroup *group = wl_container_of(listener, group, destroy);
-  wl_event_source_remove(group->key_repeat_source);
-  wlr_keyboard_group_destroy(group->wlr_group);
-  wl_list_remove(&group->key.link);
-  wl_list_remove(&group->modifiers.link);
-  wl_list_remove(&group->destroy.link);
-  free(group);
-}
-
-Monitor *dirtomon(enum wlr_direction dir) {
-  struct wlr_output *next;
-  if (!wlr_output_layout_get(output_layout, selmon->wlr_output))
-    return selmon;
-  if ((next = wlr_output_layout_adjacent_output(
-           output_layout, dir, selmon->wlr_output, selmon->m.x, selmon->m.y)))
-    return next->data;
-  if ((next = wlr_output_layout_farthest_output(
-           output_layout, dir ^ (WLR_DIRECTION_LEFT | WLR_DIRECTION_RIGHT),
-           selmon->wlr_output, selmon->m.x, selmon->m.y)))
-    return next->data;
-  return selmon;
 }
 
 void focusclient(Client *c, int lift) {
@@ -1486,6 +1451,28 @@ void focusstack(int i) {
   focusclient(c, 1);
 }
 
+void gpureset(struct wl_listener *, void *) {
+  struct wlr_renderer *old_drw = drw;
+  struct wlr_allocator *old_alloc = alloc;
+  struct Monitor *m;
+  if (!(drw = wlr_renderer_autocreate(backend)))
+    die("couldn't recreate renderer");
+
+  if (!(alloc = wlr_allocator_autocreate(backend, drw)))
+    die("couldn't recreate allocator");
+
+  LISTEN_STATIC(&drw->events.lost, gpureset);
+
+  wlr_compositor_set_renderer(compositor, drw);
+
+  wl_list_for_each(m, &mons, link) {
+    wlr_output_init_render(m->wlr_output, alloc, drw);
+  }
+
+  wlr_allocator_destroy(old_alloc);
+  wlr_renderer_destroy(old_drw);
+}
+
 /* We probably should change the name of this, it sounds like
  * will focus the topmost client of this mon, when actually will
  * only return that client */
@@ -1498,10 +1485,7 @@ Client *focustop(Monitor *m) {
   return NULL;
 }
 
-#pragma GCC diagnostic push
-#pragma GCC diagnostic ignored "-Wunused-parameter"
-void fullscreennotify(struct wl_listener *listener, void *data) {
-#pragma GCC diagnostic pop
+void fullscreennotify(struct wl_listener *listener, void *) {
   Client *c = wl_container_of(listener, c, fullscreen);
   setfullscreen(c, client_wants_fullscreen(c));
 }
@@ -1526,17 +1510,7 @@ void handlesig(int signo) {
   }
 }
 
-// void incnmaster(const Arg *arg) {
-//   if (!arg || !selmon)
-//     return;
-//   selmon->nmaster = MAX(selmon->nmaster + arg->i, 0);
-//   arrange(selmon);
-// }
-
-#pragma GCC diagnostic push
-#pragma GCC diagnostic ignored "-Wunused-parameter"
-void inputdevice(struct wl_listener *listener, void *data) {
-#pragma GCC diagnostic pop
+void inputdevice(struct wl_listener *, void *data) {
   /* This event is raised by the backend when a new input device becomes
    * available. */
   struct wlr_input_device *device = data;
@@ -1581,14 +1555,14 @@ void spawn1(const char *cmd, const char *arg) {
   }
 }
 
-void spawn2(const char *cmd, const char *arg0, const char *arg1) {
-  if (fork() == 0) {
-    dup2(STDERR_FILENO, STDOUT_FILENO);
-    setsid();
-    execl(cmd, cmd, arg0, arg1, NULL);
-    die("dwl: execvp %s failed:", cmd);
-  }
-}
+// void spawn2(const char *cmd, const char *arg0, const char *arg1) {
+//   if (fork() == 0) {
+//     dup2(STDERR_FILENO, STDOUT_FILENO);
+//     setsid();
+//     execl(cmd, cmd, arg0, arg1, NULL);
+//     die("dwl: execvp %s failed:", cmd);
+//   }
+// }
 
 void spawn3(const char *cmd, const char *arg0, const char *arg1,
             const char *arg2) {
@@ -1860,10 +1834,7 @@ void keypress(struct wl_listener *listener, void *data) {
                                event->state);
 }
 
-#pragma GCC diagnostic push
-#pragma GCC diagnostic ignored "-Wunused-parameter"
-void keypressmod(struct wl_listener *listener, void *data) {
-#pragma GCC diagnostic pop
+void keypressmod(struct wl_listener *listener, void *) {
   /* This event is raised when a modifier key, such as shift or alt, is
    * pressed. We simply communicate this to the client. */
   KeyboardGroup *group = wl_container_of(listener, group, modifiers);
@@ -1896,10 +1867,7 @@ void killclient(void) {
     client_send_close(sel);
 }
 
-#pragma GCC diagnostic push
-#pragma GCC diagnostic ignored "-Wunused-parameter"
-void locksession(struct wl_listener *listener, void *data) {
-#pragma GCC diagnostic pop
+void locksession(struct wl_listener *, void *data) {
   struct wlr_session_lock_v1 *session_lock = data;
   SessionLock *lock;
   wlr_scene_node_set_enabled(&locked_bg->node, 1);
@@ -1922,17 +1890,11 @@ void locksession(struct wl_listener *listener, void *data) {
   wlr_session_lock_v1_send_locked(session_lock);
 }
 
-#pragma GCC diagnostic push
-#pragma GCC diagnostic ignored "-Wunused-parameter"
-void maplayersurfacenotify(struct wl_listener *listener, void *data) {
-#pragma GCC diagnostic pop
-  motionnotify(0, NULL, 0, 0, 0, 0);
-}
+// void maplayersurfacenotify(struct wl_listener *, void *) {
+//   motionnotify(0, NULL, 0, 0, 0, 0);
+// }
 
-#pragma GCC diagnostic push
-#pragma GCC diagnostic ignored "-Wunused-parameter"
-void mapnotify(struct wl_listener *listener, void *data) {
-#pragma GCC diagnostic pop
+void mapnotify(struct wl_listener *listener, void *) {
   /* Called when the surface is mapped, or ready to display on-screen. */
   Client *p = NULL;
   Client *w, *c = wl_container_of(listener, c, map);
@@ -1954,8 +1916,7 @@ void mapnotify(struct wl_listener *listener, void *data) {
   if (client_is_unmanaged(c)) {
     /* Unmanaged clients always are floating */
     wlr_scene_node_reparent(&c->scene->node, layers[LyrFloat]);
-    wlr_scene_node_set_position(&c->scene->node, c->geom.x + borderpx,
-                                c->geom.y + borderpx);
+    wlr_scene_node_set_position(&c->scene->node, c->geom.x, c->geom.y);
     if (client_wants_focus(c)) {
       focusclient(c, 1);
       exclusive_focus = c;
@@ -2000,10 +1961,7 @@ unset_fullscreen:
   }
 }
 
-#pragma GCC diagnostic push
-#pragma GCC diagnostic ignored "-Wunused-parameter"
-void maximizenotify(struct wl_listener *listener, void *data) {
-#pragma GCC diagnostic pop
+void maximizenotify(struct wl_listener *listener, void *) {
   /* This event is raised when a client would like to maximize itself,
    * typically because the user clicked on the maximize button on
    * client-side decorations. dwl doesn't support maximization, but
@@ -2013,29 +1971,13 @@ void maximizenotify(struct wl_listener *listener, void *data) {
    * protocol version
    * wlr_xdg_surface_schedule_configure() is used to send an empty reply. */
   Client *c = wl_container_of(listener, c, maximize);
-  if (wl_resource_get_version(c->surface.xdg->toplevel->resource) <
-      XDG_TOPLEVEL_WM_CAPABILITIES_SINCE_VERSION)
+  if (c->surface.xdg->initialized &&
+      wl_resource_get_version(c->surface.xdg->toplevel->resource) <
+          XDG_TOPLEVEL_WM_CAPABILITIES_SINCE_VERSION)
     wlr_xdg_surface_schedule_configure(c->surface.xdg);
 }
 
-// void monocle(Monitor *m) {
-//   Client *c;
-//   int n = 0;
-
-//   wl_list_for_each(c, &clients, link) {
-//     if (!VISIBLEON(c, m) || c->isfloating || c->isfullscreen)
-//       continue;
-//     resize(c, m->w, 0);
-//     n++;
-//   }
-//   if ((c = focustop(m)))
-//     wlr_scene_node_raise_to_top(&c->scene->node);
-// }
-
-#pragma GCC diagnostic push
-#pragma GCC diagnostic ignored "-Wunused-parameter"
-void motionabsolute(struct wl_listener *listener, void *data) {
-#pragma GCC diagnostic pop
+void motionabsolute(struct wl_listener *, void *data) {
   /* This event is forwarded by the cursor when a pointer emits an _absolute_
    * motion event, from 0..1 on each axis. This happens, for example, when
    * wlroots is running under a Wayland window rather than KMS+DRM, and you
@@ -2144,10 +2086,7 @@ void motionnotify(uint32_t time, struct wlr_input_device *device, double dx,
   pointerfocus(c, surface, sx, sy, time);
 }
 
-#pragma GCC diagnostic push
-#pragma GCC diagnostic ignored "-Wunused-parameter"
-void motionrelative(struct wl_listener *listener, void *data) {
-#pragma GCC diagnostic pop
+void motionrelative(struct wl_listener *, void *data) {
   /* This event is forwarded by the cursor when a pointer emits a _relative_
    * pointer motion event (i.e. a delta) */
   struct wlr_pointer_motion_event *event = data;
@@ -2185,10 +2124,7 @@ void moveresize(uint32_t ui) {
   }
 }
 
-#pragma GCC diagnostic push
-#pragma GCC diagnostic ignored "-Wunused-parameter"
-void outputmgrapply(struct wl_listener *listener, void *data) {
-#pragma GCC diagnostic pop
+void outputmgrapply(struct wl_listener *, void *data) {
   struct wlr_output_configuration_v1 *config = data;
   outputmgrapplyortest(config, 0);
 }
@@ -2249,10 +2185,7 @@ void outputmgrapplyortest(struct wlr_output_configuration_v1 *config,
   updatemons(NULL, NULL);
 }
 
-#pragma GCC diagnostic push
-#pragma GCC diagnostic ignored "-Wunused-parameter"
-void outputmgrtest(struct wl_listener *listener, void *data) {
-#pragma GCC diagnostic pop
+void outputmgrtest(struct wl_listener *, void *data) {
   struct wlr_output_configuration_v1 *config = data;
   outputmgrapplyortest(config, 1);
 }
@@ -2323,10 +2256,7 @@ void printstatus(void) {
 
 void quit(void) { wl_display_terminate(dpy); }
 
-#pragma GCC diagnostic push
-#pragma GCC diagnostic ignored "-Wunused-parameter"
-void rendermon(struct wl_listener *listener, void *data) {
-#pragma GCC diagnostic pop
+void rendermon(struct wl_listener *listener, void *) {
   /* This function is called every time an output is ready to display a frame,
    * generally at the output's refresh rate (e.g. 60Hz). */
   Monitor *m = wl_container_of(listener, m, frame);
@@ -2377,19 +2307,14 @@ skip:
   wlr_output_state_finish(&pending);
 }
 
-#pragma GCC diagnostic push
-#pragma GCC diagnostic ignored "-Wunused-parameter"
-void requestdecorationmode(struct wl_listener *listener, void *data) {
-#pragma GCC diagnostic pop
+void requestdecorationmode(struct wl_listener *listener, void *) {
   Client *c = wl_container_of(listener, c, set_decoration_mode);
-  wlr_xdg_toplevel_decoration_v1_set_mode(
-      c->decoration, WLR_XDG_TOPLEVEL_DECORATION_V1_MODE_SERVER_SIDE);
+  if (c->surface.xdg->initialized)
+    wlr_xdg_toplevel_decoration_v1_set_mode(
+        c->decoration, WLR_XDG_TOPLEVEL_DECORATION_V1_MODE_SERVER_SIDE);
 }
 
-#pragma GCC diagnostic push
-#pragma GCC diagnostic ignored "-Wunused-parameter"
-void requeststartdrag(struct wl_listener *listener, void *data) {
-#pragma GCC diagnostic pop
+void requeststartdrag(struct wl_listener *, void *data) {
   struct wlr_seat_request_start_drag_event *event = data;
 
   if (wlr_seat_validate_pointer_grab_serial(seat, event->origin, event->serial))
@@ -2398,18 +2323,21 @@ void requeststartdrag(struct wl_listener *listener, void *data) {
     wlr_data_source_destroy(event->drag->source);
 }
 
-#pragma GCC diagnostic push
-#pragma GCC diagnostic ignored "-Wunused-parameter"
-void requestmonstate(struct wl_listener *listener, void *data) {
-#pragma GCC diagnostic pop
+void requestmonstate(struct wl_listener *, void *data) {
   struct wlr_output_event_request_state *event = data;
   wlr_output_commit_state(event->output, event->state);
   updatemons(NULL, NULL);
 }
 
 void resize(Client *c, struct wlr_box geo, int interact) {
-  struct wlr_box *bbox = interact ? &sgeom : &c->mon->w;
+  struct wlr_box *bbox;
   struct wlr_box clip;
+
+  if (!c->mon || !client_surface(c)->mapped)
+    return;
+
+  bbox = interact ? &sgeom : &c->mon->w;
+
   client_set_bounds(c, geo.width, geo.height);
   c->geom = geo;
   applybounds(c, bbox);
@@ -2485,10 +2413,7 @@ void run(char *startup_cmd) {
   wl_display_run(dpy);
 }
 
-#pragma GCC diagnostic push
-#pragma GCC diagnostic ignored "-Wunused-parameter"
-void setcursor(struct wl_listener *listener, void *data) {
-#pragma GCC diagnostic pop
+void setcursor(struct wl_listener *, void *data) {
   /* This event is raised by the seat when a client provides a cursor image */
   struct wlr_seat_pointer_request_set_cursor_event *event = data;
   /* If we're "grabbing" the cursor, don't use the client's image, we will
@@ -2506,10 +2431,7 @@ void setcursor(struct wl_listener *listener, void *data) {
                            event->hotspot_y);
 }
 
-#pragma GCC diagnostic push
-#pragma GCC diagnostic ignored "-Wunused-parameter"
-void setcursorshape(struct wl_listener *listener, void *data) {
-#pragma GCC diagnostic pop
+void setcursorshape(struct wl_listener *, void *data) {
   struct wlr_cursor_shape_manager_v1_request_set_shape_event *event = data;
   if (cursor_mode != CurNormal && cursor_mode != CurPressed)
     return;
@@ -2525,7 +2447,7 @@ void setfloating(Client *c, int floating) {
   Client *p = client_get_parent(c);
   c->isfloating = floating;
   /* If in floating layout do not change the client's layer */
-  if (!c->mon)
+  if (!c->mon || !client_surface(c)->mapped)
     return;
   wlr_scene_node_reparent(
       &c->scene->node, layers[c->isfullscreen || (p && p->isfullscreen) ? LyrFS
@@ -2557,10 +2479,7 @@ void setfullscreen(Client *c, int fullscreen) {
   printstatus();
 }
 
-#pragma GCC diagnostic push
-#pragma GCC diagnostic ignored "-Wunused-parameter"
-void setgamma(struct wl_listener *listener, void *data) {
-#pragma GCC diagnostic pop
+void setgamma(struct wl_listener *, void *data) {
   struct wlr_gamma_control_manager_v1_set_gamma_event *event = data;
   Monitor *m = event->output->data;
   if (!m)
@@ -2615,10 +2534,7 @@ void setmon(Client *c, Monitor *m, uint32_t newtags) {
   focusclient(focustop(selmon), 1);
 }
 
-#pragma GCC diagnostic push
-#pragma GCC diagnostic ignored "-Wunused-parameter"
-void setpsel(struct wl_listener *listener, void *data) {
-#pragma GCC diagnostic pop
+void setpsel(struct wl_listener *, void *data) {
   /* This event is raised by the seat when a client wants to set the selection,
    * usually when the user copies something. wlroots allows compositors to
    * ignore such requests if they so choose, but in dwl we always honor
@@ -2627,10 +2543,7 @@ void setpsel(struct wl_listener *listener, void *data) {
   wlr_seat_set_primary_selection(seat, event->source, event->serial);
 }
 
-#pragma GCC diagnostic push
-#pragma GCC diagnostic ignored "-Wunused-parameter"
-void setsel(struct wl_listener *listener, void *data) {
-#pragma GCC diagnostic pop
+void setsel(struct wl_listener *, void *data) {
   /* This event is raised by the seat when a client wants to set the selection,
    * usually when the user copies something. wlroots allows compositors to
    * ignore such requests if they so choose, but in dwl we always honor
@@ -2652,17 +2565,13 @@ void setup(int log_level) {
   /* The Wayland display is managed by libwayland. It handles accepting
    * clients from the Unix socket, manging Wayland globals, and so on. */
   dpy = wl_display_create();
+  event_loop = wl_display_get_event_loop(dpy);
 
   /* The backend is a wlroots feature which abstracts the underlying input and
    * output hardware. The autocreate option will choose the most suitable
    * backend based on the current environment, such as opening an X11 window
    * if an X11 server is running. */
-#if WLROOTS >= 18
-  if (!(backend =
-            wlr_backend_autocreate(wl_display_get_event_loop(dpy), &session)))
-#else
-  if (!(backend = wlr_backend_autocreate(dpy, &session)))
-#endif
+  if (!(backend = wlr_backend_autocreate(event_loop, &session)))
     die("couldn't create backend");
 
   /* Initialize the scene graph used to lay out windows */
@@ -2679,6 +2588,7 @@ void setup(int log_level) {
    * supports for shared memory, this configures that for clients. */
   if (!(drw = wlr_renderer_autocreate(backend)))
     die("couldn't create renderer");
+  LISTEN_STATIC(&drw->events.lost, gpureset);
 
   /* Create shm, drm and linux_dmabuf interfaces by ourselves.
    * The simplest way is call:
@@ -2687,14 +2597,10 @@ void setup(int log_level) {
    * with wlr_scene. */
   wlr_renderer_init_wl_shm(drw, dpy);
 
-#if WLROOTS >= 18
   if (wlr_renderer_get_texture_formats(drw, WLR_BUFFER_CAP_DMABUF)) {
-#else
-  if (wlr_renderer_get_dmabuf_texture_formats(drw)) {
-#endif
     wlr_drm_create(dpy, drw);
     wlr_scene_set_linux_dmabuf_v1(
-        scene, wlr_linux_dmabuf_v1_create_with_renderer(dpy, 4, drw));
+        scene, wlr_linux_dmabuf_v1_create_with_renderer(dpy, 5, drw));
   }
 
   /* Autocreates an allocator for us.
@@ -2720,6 +2626,8 @@ void setup(int log_level) {
   wlr_viewporter_create(dpy);
   wlr_single_pixel_buffer_manager_v1_create(dpy);
   wlr_fractional_scale_manager_v1_create(dpy, 1);
+  wlr_presentation_create(dpy, backend);
+	wlr_alpha_modifier_v1_create(dpy);
 
   /* Initializes the interface used to implement urgency hints */
   activation = wlr_xdg_activation_v1_create(dpy);
@@ -2730,11 +2638,7 @@ void setup(int log_level) {
 
   /* Creates an output layout, which a wlroots utility for working with an
    * arrangement of screens in a physical layout. */
-#if WLROOTS >= 18
   output_layout = wlr_output_layout_create(dpy);
-#else
-  output_layout = wlr_output_layout_create();
-#endif
   LISTEN_STATIC(&output_layout->events.change, updatemons);
   wlr_xdg_output_manager_v1_create(dpy, output_layout);
 
@@ -2753,7 +2657,8 @@ void setup(int log_level) {
   wl_list_init(&fstack);
 
   xdg_shell = wlr_xdg_shell_create(dpy, 6);
-  LISTEN_STATIC(&xdg_shell->events.new_surface, createnotify);
+  LISTEN_STATIC(&xdg_shell->events.new_toplevel, createnotify);
+	LISTEN_STATIC(&xdg_shell->events.new_popup, createpopup);
 
   layer_shell = wlr_layer_shell_v1_create(dpy, 3);
   LISTEN_STATIC(&layer_shell->events.new_surface, createlayersurface);
@@ -2845,10 +2750,6 @@ void setup(int log_level) {
   LISTEN_STATIC(&output_mgr->events.apply, outputmgrapply);
   LISTEN_STATIC(&output_mgr->events.test, outputmgrtest);
 
-#if WLROOTS < 18
-  wlr_scene_set_presentation(scene, wlr_presentation_create(dpy, backend));
-#endif
-
   /* Make sure XWayland clients don't connect to the parent X server,
    * e.g when running in the x11 backend or the wayland backend and the
    * compositor has Xwayland support */
@@ -2870,10 +2771,7 @@ void setup(int log_level) {
 #endif
 }
 
-#pragma GCC diagnostic push
-#pragma GCC diagnostic ignored "-Wunused-parameter"
-void startdrag(struct wl_listener *listener, void *data) {
-#pragma GCC diagnostic pop
+void startdrag(struct wl_listener *, void *data) {
   struct wlr_drag *drag = data;
   if (!drag->icon)
     return;
@@ -2977,18 +2875,12 @@ void toggleview(uint32_t ui) {
   printstatus();
 }
 
-#pragma GCC diagnostic push
-#pragma GCC diagnostic ignored "-Wunused-parameter"
-void unlocksession(struct wl_listener *listener, void *data) {
-#pragma GCC diagnostic pop
+void unlocksession(struct wl_listener *listener, void *) {
   SessionLock *lock = wl_container_of(listener, lock, unlock);
   destroylock(lock, 1);
 }
 
-#pragma GCC diagnostic push
-#pragma GCC diagnostic ignored "-Wunused-parameter"
-void unmaplayersurfacenotify(struct wl_listener *listener, void *data) {
-#pragma GCC diagnostic pop
+void unmaplayersurfacenotify(struct wl_listener *listener, void *) {
   LayerSurface *l = wl_container_of(listener, l, unmap);
 
   l->mapped = 0;
@@ -3002,10 +2894,7 @@ void unmaplayersurfacenotify(struct wl_listener *listener, void *data) {
   motionnotify(0, NULL, 0, 0, 0, 0);
 }
 
-#pragma GCC diagnostic push
-#pragma GCC diagnostic ignored "-Wunused-parameter"
-void unmapnotify(struct wl_listener *listener, void *data) {
-#pragma GCC diagnostic pop
+void unmapnotify(struct wl_listener *listener, void *) {
   /* Called when the surface is unmapped, and should no longer be shown. */
   Client *c = wl_container_of(listener, c, unmap);
   if (c == grabc) {
@@ -3029,10 +2918,7 @@ void unmapnotify(struct wl_listener *listener, void *data) {
   motionnotify(0, NULL, 0, 0, 0, 0);
 }
 
-#pragma GCC diagnostic push
-#pragma GCC diagnostic ignored "-Wunused-parameter"
-void updatemons(struct wl_listener *listener, void *data) {
-#pragma GCC diagnostic pop
+void updatemons(struct wl_listener *, void *) {
   /*
    * Called whenever the output layout changes: adding or removing a
    * monitor, changing an output's mode or position, etc. This is where
@@ -3135,19 +3021,13 @@ void updatemons(struct wl_listener *listener, void *data) {
   wlr_output_manager_v1_set_configuration(output_mgr, config);
 }
 
-#pragma GCC diagnostic push
-#pragma GCC diagnostic ignored "-Wunused-parameter"
-void updatetitle(struct wl_listener *listener, void *data) {
-#pragma GCC diagnostic pop
+void updatetitle(struct wl_listener *listener, void *) {
   Client *c = wl_container_of(listener, c, set_title);
   if (c == focustop(c->mon))
     printstatus();
 }
 
-#pragma GCC diagnostic push
-#pragma GCC diagnostic ignored "-Wunused-parameter"
-void urgent(struct wl_listener *listener, void *data) {
-#pragma GCC diagnostic pop
+void urgent(struct wl_listener *, void *data) {
   struct wlr_xdg_activation_v1_request_activate_event *event = data;
   Client *c = NULL;
   toplevel_from_wlr_surface(event->surface, &c, NULL);
@@ -3172,10 +3052,7 @@ void view(uint32_t ui) {
   printstatus();
 }
 
-#pragma GCC diagnostic push
-#pragma GCC diagnostic ignored "-Wunused-parameter"
-void virtualkeyboard(struct wl_listener *listener, void *data) {
-#pragma GCC diagnostic pop
+void virtualkeyboard(struct wl_listener *, void *data) {
   struct wlr_virtual_keyboard_v1 *kb = data;
   /* virtual keyboards shouldn't share keyboard group */
   KeyboardGroup *group = createkeyboardgroup();
@@ -3188,17 +3065,16 @@ void virtualkeyboard(struct wl_listener *listener, void *data) {
   wlr_keyboard_group_add_keyboard(group->wlr_group, &kb->keyboard);
 }
 
-#pragma GCC diagnostic push
-#pragma GCC diagnostic ignored "-Wunused-parameter"
-void virtualpointer(struct wl_listener *listener, void *data) {
-#pragma GCC diagnostic pop
-  struct wlr_virtual_pointer_v1_new_pointer_event *event = data;
-  struct wlr_pointer pointer = event->new_pointer->pointer;
 
-  wlr_cursor_attach_input_device(cursor, &pointer.base);
-  if (event->suggested_output)
-    wlr_cursor_map_input_to_output(cursor, &pointer.base,
-                                   event->suggested_output);
+void
+virtualpointer(struct wl_listener *, void *data)
+{
+	struct wlr_virtual_pointer_v1_new_pointer_event *event = data;
+	struct wlr_input_device *device = &event->new_pointer->pointer.base;
+
+	wlr_cursor_attach_input_device(cursor, device);
+	if (event->suggested_output)
+		wlr_cursor_map_input_to_output(cursor, device, event->suggested_output);
 }
 
 Monitor *xytomon(double x, double y) {
@@ -3271,10 +3147,7 @@ void zoom(void) {
 }
 
 #ifdef XWAYLAND
-#pragma GCC diagnostic push
-#pragma GCC diagnostic ignored "-Wunused-parameter"
-void activatex11(struct wl_listener *listener, void *data) {
-#pragma GCC diagnostic pop
+void activatex11(struct wl_listener *listener, void *) {
   Client *c = wl_container_of(listener, c, activate);
 
   /* Only "managed" windows can be activated */
@@ -3282,10 +3155,7 @@ void activatex11(struct wl_listener *listener, void *data) {
     wlr_xwayland_surface_activate(c->surface.xwayland, 1);
 }
 
-#pragma GCC diagnostic push
-#pragma GCC diagnostic ignored "-Wunused-parameter"
-void associatex11(struct wl_listener *listener, void *data) {
-#pragma GCC diagnostic pop
+void associatex11(struct wl_listener *listener, void *) {
   Client *c = wl_container_of(listener, c, associate);
 
   LISTEN(&client_surface(c)->events.map, &c->map, mapnotify);
@@ -3312,10 +3182,7 @@ void configurex11(struct wl_listener *listener, void *data) {
     arrange(c->mon);
 }
 
-#pragma GCC diagnostic push
-#pragma GCC diagnostic ignored "-Wunused-parameter"
-void createnotifyx11(struct wl_listener *listener, void *data) {
-#pragma GCC diagnostic pop
+void createnotifyx11(struct wl_listener *, void *data) {
   struct wlr_xwayland_surface *xsurface = data;
   Client *c;
 
@@ -3337,10 +3204,7 @@ void createnotifyx11(struct wl_listener *listener, void *data) {
   LISTEN(&xsurface->events.set_title, &c->set_title, updatetitle);
 }
 
-#pragma GCC diagnostic push
-#pragma GCC diagnostic ignored "-Wunused-parameter"
-void dissociatex11(struct wl_listener *listener, void *data) {
-#pragma GCC diagnostic pop
+void dissociatex11(struct wl_listener *listener, void *) {
   Client *c = wl_container_of(listener, c, dissociate);
   wl_list_remove(&c->map.link);
   wl_list_remove(&c->unmap.link);
@@ -3357,10 +3221,7 @@ xcb_atom_t getatom(xcb_connection_t *xc, const char *name) {
   return atom;
 }
 
-#pragma GCC diagnostic push
-#pragma GCC diagnostic ignored "-Wunused-parameter"
-void sethints(struct wl_listener *listener, void *data) {
-#pragma GCC diagnostic pop
+void sethints(struct wl_listener *listener, void *) {
   Client *c = wl_container_of(listener, c, set_hints);
   struct wlr_surface *surface = client_surface(c);
   if (c == focustop(selmon))
@@ -3373,10 +3234,7 @@ void sethints(struct wl_listener *listener, void *data) {
     client_set_border_color(c, urgentcolor);
 }
 
-#pragma GCC diagnostic push
-#pragma GCC diagnostic ignored "-Wunused-parameter"
-void xwaylandready(struct wl_listener *listener, void *data) {
-#pragma GCC diagnostic pop
+void xwaylandready(struct wl_listener *, void *) {
   struct wlr_xcursor *xcursor;
   xcb_connection_t *xc = xcb_connect(xwayland->display_name, NULL);
   int err = xcb_connection_has_error(xc);

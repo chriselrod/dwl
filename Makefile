@@ -4,28 +4,14 @@
 include config.mk
 
 # flags for compiling
-DWLCPPFLAGS = -I. -DWLR_USE_UNSTABLE -D_POSIX_C_SOURCE=200809L -DVERSION=\"$(VERSION)\" $(XWAYLAND)
+DWLCPPFLAGS = -I. -DWLR_USE_UNSTABLE -D_POSIX_C_SOURCE=202311L -DVERSION=\"$(VERSION)\" $(XWAYLAND)
 DWLDEVCFLAGS = -g0 -Wpedantic -Wall -Wextra -Wdeclaration-after-statement -Wno-unused-parameter -Wshadow -Wunused-macros\
 	-Werror -Werror=strict-prototypes -Werror=implicit -Werror=return-type -Werror=incompatible-pointer-types -Wfloat-conversion
 
 
 # CFLAGS / LDFLAGS
-CFLAGS    = -march=native -Os -DNDEBUG -g0 -Werror -Wpedantic -Wall -Wextra -fno-semantic-interposition -fomit-frame-pointer -pipe -flto
-PKGS      = wayland-server xkbcommon libinput $(XLIBS)
-
-WLROOTS18_FOUND := $(pkg-config --exists wlroots-0.18 . 2> /dev/null; echo $$?)
-ifeq ($(WLROOTS18_FOUND),1)
-  PKGS += wlroots
-  WLROOTSVER18_FOUND := $(pkg-config --atleast-version 0.18 --exists wlroots . 2> /dev/null; echo $$?)
-  ifeq ($(WLROOTS18_FOUND),1)
-    CFLAGS += -DWLROOTS=17
-  else
-    CFLAGS += -DWLROOTS=18
-  endif
-else
-  PKGS += wlroots-0.18
-  CFLAGS += -DWLROOTS=18
-endif
+CFLAGS    = -march=native -Os -DNDEBUG  -std=c23 -g0 -Werror -Wpedantic -Wall -Wextra -fno-semantic-interposition -fomit-frame-pointer -pipe -flto -lm
+PKGS      = wayland-server xkbcommon libinput wlroots-0.18 $(XLIBS)
 
 DWLCFLAGS = `$(PKG_CONFIG) --cflags $(PKGS)` $(DWLCPPFLAGS) $(DWLDEVCFLAGS) $(CFLAGS)
 LDLIBS    = `$(PKG_CONFIG) --libs $(PKGS)` $(LIBS)
