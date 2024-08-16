@@ -375,8 +375,8 @@ static void setsel(struct wl_listener *listener, void *data);
 static void setup(int);
 // static void spawn(const char *);
 static void spawn1(const char *, const char *);
-// static void spawn2(const char *, const char *, const char *);
-static void spawn3(const char *, const char *, const char *, const char *);
+static void spawn2(const char *, const char *, const char *);
+// static void spawn3(const char *, const char *, const char *, const char *);
 static void startdrag(struct wl_listener *listener, void *data);
 static void tag(uint32_t);
 static void tagmon(int);
@@ -1555,24 +1555,24 @@ void spawn1(const char *cmd, const char *arg) {
   }
 }
 
-// void spawn2(const char *cmd, const char *arg0, const char *arg1) {
-//   if (fork() == 0) {
-//     dup2(STDERR_FILENO, STDOUT_FILENO);
-//     setsid();
-//     execl(cmd, cmd, arg0, arg1, NULL);
-//     die("dwl: execvp %s failed:", cmd);
-//   }
-// }
-
-void spawn3(const char *cmd, const char *arg0, const char *arg1,
-            const char *arg2) {
+void spawn2(const char *cmd, const char *arg0, const char *arg1) {
   if (fork() == 0) {
     dup2(STDERR_FILENO, STDOUT_FILENO);
     setsid();
-    execl(cmd, cmd, arg0, arg1, arg2, NULL);
+    execl(cmd, cmd, arg0, arg1, NULL);
     die("dwl: execvp %s failed:", cmd);
   }
 }
+
+// void spawn3(const char *cmd, const char *arg0, const char *arg1,
+//             const char *arg2) {
+//   if (fork() == 0) {
+//     dup2(STDERR_FILENO, STDOUT_FILENO);
+//     setsid();
+//     execl(cmd, cmd, arg0, arg1, arg2, NULL);
+//     die("dwl: execvp %s failed:", cmd);
+//   }
+// }
 
 void movestack(int i) {
   Client *c, *sel = focustop(selmon);
@@ -1673,10 +1673,13 @@ int keybinding(uint32_t mods, xkb_keysym_t sym) {
       view((uint32_t)1 << (uint32_t)(sym - XKB_KEY_1));
       return 1;
     case XKB_KEY_r:
-      spawn3("/home/chriselrod/.local/bin/tofi-drun", "--drun-launch=true",
+      spawn2("/home/chriselrod/.local/bin/tofi-drun", "--drun-launch=true",
              "--font=/usr/share/fonts/iosevka-term-curly-fonts/"
-             "IosevkaTermCurly-Regular.ttf",
-             "--ascii-input");
+             "IosevkaTermCurly-Regular.ttf");
+      // spawn3("/home/chriselrod/.local/bin/tofi-drun", "--drun-launch=true",
+      //        "--font=/usr/share/fonts/iosevka-term-curly-fonts/"
+      //        "IosevkaTermCurly-Regular.ttf",
+      //        "--ascii-input");
       return 1;
     case XKB_KEY_q:
       // spawn("/usr/bin/foot");
@@ -2627,7 +2630,7 @@ void setup(int log_level) {
   wlr_single_pixel_buffer_manager_v1_create(dpy);
   wlr_fractional_scale_manager_v1_create(dpy, 1);
   wlr_presentation_create(dpy, backend);
-	wlr_alpha_modifier_v1_create(dpy);
+  wlr_alpha_modifier_v1_create(dpy);
 
   /* Initializes the interface used to implement urgency hints */
   activation = wlr_xdg_activation_v1_create(dpy);
@@ -2658,7 +2661,7 @@ void setup(int log_level) {
 
   xdg_shell = wlr_xdg_shell_create(dpy, 6);
   LISTEN_STATIC(&xdg_shell->events.new_toplevel, createnotify);
-	LISTEN_STATIC(&xdg_shell->events.new_popup, createpopup);
+  LISTEN_STATIC(&xdg_shell->events.new_popup, createpopup);
 
   layer_shell = wlr_layer_shell_v1_create(dpy, 3);
   LISTEN_STATIC(&layer_shell->events.new_surface, createlayersurface);
@@ -3065,16 +3068,13 @@ void virtualkeyboard(struct wl_listener *, void *data) {
   wlr_keyboard_group_add_keyboard(group->wlr_group, &kb->keyboard);
 }
 
+void virtualpointer(struct wl_listener *, void *data) {
+  struct wlr_virtual_pointer_v1_new_pointer_event *event = data;
+  struct wlr_input_device *device = &event->new_pointer->pointer.base;
 
-void
-virtualpointer(struct wl_listener *, void *data)
-{
-	struct wlr_virtual_pointer_v1_new_pointer_event *event = data;
-	struct wlr_input_device *device = &event->new_pointer->pointer.base;
-
-	wlr_cursor_attach_input_device(cursor, device);
-	if (event->suggested_output)
-		wlr_cursor_map_input_to_output(cursor, device, event->suggested_output);
+  wlr_cursor_attach_input_device(cursor, device);
+  if (event->suggested_output)
+    wlr_cursor_map_input_to_output(cursor, device, event->suggested_output);
 }
 
 Monitor *xytomon(double x, double y) {

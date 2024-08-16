@@ -5,6 +5,9 @@ include config.mk
 
 # flags for compiling
 DWLCPPFLAGS = -I. -DWLR_USE_UNSTABLE -D_POSIX_C_SOURCE=202311L -DVERSION=\"$(VERSION)\" $(XWAYLAND)
+# DWLDEVCFLAGS = -g3 -Wpedantic -Wall -Wextra -Wdeclaration-after-statement -Wno-unused-parameter -Wshadow -Wunused-macros\
+# 	-Werror -Werror=strict-prototypes -Werror=implicit -Werror=return-type -Werror=incompatible-pointer-types -Wfloat-conversion
+# CFLAGS    = -march=native  -std=c23 -g3 -Werror -Wpedantic -Wall -Wextra -fno-semantic-interposition -fno-omit-frame-pointer -pipe -flto -lm -fsanitize=address
 DWLDEVCFLAGS = -g0 -Wpedantic -Wall -Wextra -Wdeclaration-after-statement -Wno-unused-parameter -Wshadow -Wunused-macros\
 	-Werror -Werror=strict-prototypes -Werror=implicit -Werror=return-type -Werror=incompatible-pointer-types -Wfloat-conversion
 
