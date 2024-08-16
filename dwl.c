@@ -13,10 +13,12 @@
 #include <time.h>
 #include <unistd.h>
 #include <wayland-server-core.h>
+#include <wayland-server-protocol.h>
 #include <wlr/backend.h>
 #include <wlr/backend/libinput.h>
 #include <wlr/render/allocator.h>
 #include <wlr/render/wlr_renderer.h>
+#include <wlr/types/wlr_alpha_modifier_v1.h>
 #include <wlr/types/wlr_compositor.h>
 #include <wlr/types/wlr_cursor.h>
 #include <wlr/types/wlr_cursor_shape_v1.h>
@@ -33,6 +35,7 @@
 #include <wlr/types/wlr_keyboard_group.h>
 #include <wlr/types/wlr_layer_shell_v1.h>
 #include <wlr/types/wlr_linux_dmabuf_v1.h>
+#include <wlr/types/wlr_linux_drm_syncobj_v1.h>
 #include <wlr/types/wlr_output.h>
 #include <wlr/types/wlr_output_layout.h>
 #include <wlr/types/wlr_output_management_v1.h>
@@ -278,38 +281,45 @@ typedef struct {
 } SessionLock;
 
 /* function declarations */
+static Client *focustop(Monitor *m);
+static int keybinding(uint32_t mods, xkb_keysym_t sym);
+static int keyrepeat(void *data);
+static KeyboardGroup *createkeyboardgroup(void);
+static Monitor *dirtomon(enum wlr_direction dir);
 static void applybounds(Client *c, struct wlr_box *bbox);
 static void applyrules(Client *c);
-static void arrange(Monitor *m);
 static void arrangelayer(Monitor *m, struct wl_list *list,
                          struct wlr_box *usable_area, int exclusive);
 static void arrangelayers(Monitor *m);
+static void arrange(Monitor *m);
 static void axisnotify(struct wl_listener *listener, void *data);
 static void buttonpress(struct wl_listener *listener, void *data);
-static void chvt(uint32_t);
 static void checkidleinhibitor(struct wlr_surface *exclude);
-static void cleanup(void);
+static void chvt(uint32_t);
 static void cleanupmon(struct wl_listener *listener, void *data);
+static void cleanup(void);
 static void closemon(Monitor *m);
 static void collayout(Monitor *m);
 static void commitlayersurfacenotify(struct wl_listener *listener, void *data);
 static void commitnotify(struct wl_listener *listener, void *data);
+static void commitpopup(struct wl_listener *listener, void *data);
 static void createdecoration(struct wl_listener *listener, void *data);
 static void createidleinhibitor(struct wl_listener *listener, void *data);
 static void createkeyboard(struct wlr_keyboard *keyboard);
-static KeyboardGroup *createkeyboardgroup(void);
 static void createlayersurface(struct wl_listener *listener, void *data);
 static void createlocksurface(struct wl_listener *listener, void *data);
 static void createmon(struct wl_listener *listener, void *data);
 static void createnotify(struct wl_listener *listener, void *data);
-static void createpointer(struct wlr_pointer *pointer);
 static void createpointerconstraint(struct wl_listener *listener, void *data);
+static void createpointer(struct wlr_pointer *pointer);
+static void createpopup(struct wl_listener *listener, void *data);
 static void cursorconstrain(struct wlr_pointer_constraint_v1 *constraint);
 static void cursorframe(struct wl_listener *listener, void *data);
 static void cursorwarptohint(void);
 static void destroydecoration(struct wl_listener *listener, void *data);
 static void destroydragicon(struct wl_listener *listener, void *data);
 static void destroyidleinhibitor(struct wl_listener *listener, void *data);
+static void destroykeyboardgroup(struct wl_listener *listener, void *data);
 static void destroylayersurfacenotify(struct wl_listener *listener, void *data);
 static void destroylock(SessionLock *lock, int unlocked);
 static void destroylocksurface(struct wl_listener *listener, void *data);
@@ -317,21 +327,17 @@ static void destroynotify(struct wl_listener *listener, void *data);
 static void destroypointerconstraint(struct wl_listener *listener, void *data);
 static void destroysessionlock(struct wl_listener *listener, void *data);
 static void destroysessionmgr(struct wl_listener *listener, void *data);
-static void destroykeyboardgroup(struct wl_listener *listener, void *data);
-static Monitor *dirtomon(enum wlr_direction dir);
 static void focusclient(Client *c, int lift);
 static void focusmon(int);
-static void focusstack(int);
 // static void focusstack(const Arg *arg);
-static Client *focustop(Monitor *m);
+static void focusstack(int);
 static void fullscreennotify(struct wl_listener *listener, void *data);
+static void gpureset(struct wl_listener *listener, void *data);
 static void handlesig(int signo);
 // static void incnmaster(const Arg *arg);
 static void inputdevice(struct wl_listener *listener, void *data);
-static int keybinding(uint32_t mods, xkb_keysym_t sym);
-static void keypress(struct wl_listener *listener, void *data);
 static void keypressmod(struct wl_listener *listener, void *data);
-static int keyrepeat(void *data);
+static void keypress(struct wl_listener *listener, void *data);
 static void killclient(void);
 static void locksession(struct wl_listener *listener, void *data);
 static void maplayersurfacenotify(struct wl_listener *listener, void *data);
@@ -363,7 +369,6 @@ static void setcursor(struct wl_listener *listener, void *data);
 static void setcursorshape(struct wl_listener *listener, void *data);
 static void setfloating(Client *c, int floating);
 static void setfullscreen(Client *c, int fullscreen);
-static void setgamma(struct wl_listener *listener, void *data);
 // static void setmfact(int);
 static void setmon(Client *c, Monitor *m, uint32_t newtags);
 static void setpsel(struct wl_listener *listener, void *data);
@@ -371,7 +376,7 @@ static void setsel(struct wl_listener *listener, void *data);
 static void setup(int);
 // static void spawn(const char *);
 static void spawn1(const char *, const char *);
-static void spawn2(const char *, const char *, const char *);
+// static void spawn2(const char *, const char *, const char *);
 static void spawn3(const char *, const char *, const char *, const char *);
 static void startdrag(struct wl_listener *listener, void *data);
 static void tag(uint32_t);
@@ -396,11 +401,11 @@ static void xytonode(double x, double y, struct wlr_surface **psurface,
 static void zoom(void);
 
 /* variables */
-static const char broken[] = "broken";
 static pid_t child_pid = -1;
 static int locked;
 static void *exclusive_focus;
 static struct wl_display *dpy;
+static struct wl_event_loop *event_loop;
 static struct wlr_backend *backend;
 static struct wlr_scene *scene;
 static struct wlr_scene_tree *layers[NUM_LAYERS];
@@ -421,7 +426,6 @@ static struct wlr_idle_notifier_v1 *idle_notifier;
 static struct wlr_idle_inhibit_manager_v1 *idle_inhibit_mgr;
 static struct wlr_layer_shell_v1 *layer_shell;
 static struct wlr_output_manager_v1 *output_mgr;
-static struct wlr_gamma_control_manager_v1 *gamma_control_mgr;
 static struct wlr_virtual_keyboard_manager_v1 *virtual_keyboard_mgr;
 static struct wlr_virtual_pointer_manager_v1 *virtual_pointer_mgr;
 static struct wlr_cursor_shape_manager_v1 *cursor_shape_mgr;
@@ -494,10 +498,8 @@ void applyrules(Client *c) {
   Monitor *mon = selmon, *m;
 
   c->isfloating = client_is_float_type(c);
-  if (!(appid = client_get_appid(c)))
-    appid = broken;
-  if (!(title = client_get_title(c)))
-    title = broken;
+  appid = client_get_appid(c);
+  title = client_get_title(c);
 
   for (r = rules; r < END(rules); r++) {
     if ((!r->title || strstr(title, r->title)) &&
@@ -533,7 +535,7 @@ void arrange(Monitor *m) {
   /* We move all clients (except fullscreen and unmanaged) to LyrTile while
    * in floating layout to avoid "real" floating clients be always on top */
   wl_list_for_each(c, &clients, link) {
-    if (c->mon != m || c->isfullscreen)
+    if (c->mon != m || c->scene->node.parent == layers[LyrFS])
       continue;
 
     wlr_scene_node_reparent(&c->scene->node, c->isfloating
@@ -617,16 +619,9 @@ void axisnotify(struct wl_listener *listener, void *data) {
   /* TODO: allow usage of scroll whell for mousebindings, it can be implemented
    * checking the event's orientation and the delta of the event */
   /* Notify the client with pointer focus of the axis event. */
-#if WLROOTS >= 18
   wlr_seat_pointer_notify_axis(seat, event->time_msec, event->orientation,
                                event->delta, event->delta_discrete,
-                               event->source,
-                               WL_POINTER_AXIS_RELATIVE_DIRECTION_IDENTICAL);
-#else
-  wlr_seat_pointer_notify_axis(seat, event->time_msec, event->orientation,
-                               event->delta, event->delta_discrete,
-                               event->source);
-#endif
+                               event->source, event->relative_direction);
 }
 
 #pragma GCC diagnostic push
@@ -641,7 +636,7 @@ void buttonpress(struct wl_listener *listener, void *data) {
   wlr_idle_notifier_v1_notify_activity(idle_notifier, seat);
 
   switch (event->state) {
-  case WLR_BUTTON_PRESSED:
+  case WL_POINTER_BUTTON_STATE_PRESSED:
     cursor_mode = CurPressed;
     if (locked)
       break;
@@ -669,7 +664,7 @@ void buttonpress(struct wl_listener *listener, void *data) {
       }
     }
     break;
-  case WLR_BUTTON_RELEASED:
+  case WL_POINTER_BUTTON_STATE_RELEASED:
     /* If you released any buttons, we exit interactive move/resize mode. */
     /* TODO should reset to the pointer focus's current setcursor */
     if (!locked && cursor_mode != CurNormal && cursor_mode != CurPressed) {
@@ -678,6 +673,7 @@ void buttonpress(struct wl_listener *listener, void *data) {
       /* Drop the window off on its new monitor */
       selmon = xytomon(cursor->x, cursor->y);
       setmon(grabc, selmon, 0);
+      grabc = NULL;
       return;
     } else {
       cursor_mode = CurNormal;
@@ -722,9 +718,12 @@ void cleanup(void) {
     waitpid(child_pid, NULL, 0);
   }
   wlr_xcursor_manager_destroy(cursor_mgr);
-  wlr_output_layout_destroy(output_layout);
 
   destroykeyboardgroup(&kb_group->destroy, NULL);
+
+  /* If it's not destroyed manually it will cause a use-after-free of wlr_seat.
+   * Destroy it until it's fixed in the wlroots side */
+  wlr_backend_destroy(backend);
 
   wl_display_destroy(dpy);
   /* Destroy after the wayland display (when the monitors are already destroyed)
@@ -815,6 +814,22 @@ void commitlayersurfacenotify(struct wl_listener *listener, void *data) {
   struct wlr_layer_surface_v1 *layer_surface = l->layer_surface;
   struct wlr_scene_tree *scene_layer =
       layers[layermap[layer_surface->current.layer]];
+  struct wlr_layer_surface_v1_state old_state;
+
+  if (l->layer_surface->initial_commit) {
+    wlr_fractional_scale_v1_notify_scale(layer_surface->surface,
+                                         l->mon->wlr_output->scale);
+    wlr_surface_set_preferred_buffer_scale(
+        layer_surface->surface, (int32_t)ceilf(l->mon->wlr_output->scale));
+
+    /* Temporarily set the layer's current state to pending
+     * so that we can easily arrange it */
+    old_state = l->layer_surface->current;
+    l->layer_surface->current = l->layer_surface->pending;
+    arrangelayers(l->mon);
+    l->layer_surface->current = old_state;
+    return;
+  }
 
   if (layer_surface->current.committed == 0 &&
       l->mapped == layer_surface->surface->mapped)
@@ -841,12 +856,59 @@ void commitnotify(struct wl_listener *listener, void *data) {
 #pragma GCC diagnostic pop
   Client *c = wl_container_of(listener, c, commit);
 
+  if (c->surface.xdg->initial_commit) {
+    /*
+     * Get the monitor this client will be rendered on
+     * Note that if the user set a rule in which the client is placed on
+     * a different monitor based on its title this will likely select
+     * a wrong monitor.
+     */
+    applyrules(c);
+    wlr_surface_set_preferred_buffer_scale(
+        client_surface(c), (int)ceilf(c->mon->wlr_output->scale));
+    wlr_fractional_scale_v1_notify_scale(client_surface(c),
+                                         c->mon->wlr_output->scale);
+    setmon(c, NULL, 0); /* Make sure to reapply rules in mapnotify() */
+
+    wlr_xdg_toplevel_set_wm_capabilities(
+        c->surface.xdg->toplevel, WLR_XDG_TOPLEVEL_WM_CAPABILITIES_FULLSCREEN);
+    wlr_xdg_toplevel_set_size(c->surface.xdg->toplevel, 0, 0);
+    if (c->decoration)
+      requestdecorationmode(&c->set_decoration_mode, c->decoration);
+    return;
+  }
+
   if (client_surface(c)->mapped && c->mon)
     resize(c, c->geom, (c->isfloating && !c->isfullscreen));
 
   /* mark a pending resize as completed */
   if (c->resize && c->resize <= c->surface.xdg->current.configure_serial)
     c->resize = 0;
+}
+
+void commitpopup(struct wl_listener *listener, void *data) {
+  struct wlr_surface *surface = data;
+  struct wlr_xdg_popup *popup = wlr_xdg_popup_try_from_wlr_surface(surface);
+  LayerSurface *l = NULL;
+  Client *c = NULL;
+  struct wlr_box box;
+  int type = -1;
+
+  if (!popup->base->initial_commit)
+    return;
+
+  type = toplevel_from_wlr_surface(popup->base->surface, &c, &l);
+  if (!popup->parent || type < 0)
+    return;
+  popup->base->surface->data =
+      wlr_scene_xdg_surface_create(popup->parent->data, popup->base);
+  if ((l && !l->mon) || (c && !c->mon))
+    return;
+  box = type == LayerShell ? l->mon->m : c->mon->w;
+  box.x -= (type == LayerShell ? l->geom.x : c->geom.x);
+  box.y -= (type == LayerShell ? l->geom.y : c->geom.y);
+  wlr_xdg_popup_unconstrain_from_box(popup, &box);
+  wl_list_remove(&listener->link);
 }
 
 #pragma GCC diagnostic push
@@ -909,7 +971,7 @@ KeyboardGroup *createkeyboardgroup(void) {
          keypressmod);
 
   group->key_repeat_source =
-      wl_event_loop_add_timer(wl_display_get_event_loop(dpy), keyrepeat, group);
+      wl_event_loop_add_timer(event_loop, keyrepeat, group);
 
   /* A seat can only have one keyboard, but this is a limitation of the
    * Wayland protocol - not wlroots. We assign all connected keyboards to the
@@ -929,7 +991,6 @@ void createlayersurface(struct wl_listener *listener, void *data) {
   struct wlr_surface *surface = layer_surface->surface;
   struct wlr_scene_tree *scene_layer =
       layers[layermap[layer_surface->pending.layer]];
-  struct wlr_layer_surface_v1_state old_state;
 
   if (!layer_surface->output &&
       !(layer_surface->output = selmon ? selmon->wlr_output : NULL)) {
@@ -940,7 +1001,6 @@ void createlayersurface(struct wl_listener *listener, void *data) {
   l = layer_surface->data = ecalloc(1, sizeof(*l));
   l->type = LayerShell;
   LISTEN(&surface->events.commit, &l->surface_commit, commitlayersurfacenotify);
-  LISTEN(&surface->events.map, &l->map, maplayersurfacenotify);
   LISTEN(&surface->events.unmap, &l->unmap, unmaplayersurfacenotify);
   LISTEN(&layer_surface->events.destroy, &l->destroy,
          destroylayersurfacenotify);
@@ -958,15 +1018,6 @@ void createlayersurface(struct wl_listener *listener, void *data) {
 
   wl_list_insert(&l->mon->layers[layer_surface->pending.layer], &l->link);
   wlr_surface_send_enter(surface, layer_surface->output);
-
-  /* Temporarily set the layer's current state to pending
-   * so that we can easily arrange it
-   */
-  old_state = layer_surface->current;
-  layer_surface->current = layer_surface->pending;
-  l->mapped = 1;
-  arrangelayers(l->mon);
-  layer_surface->current = old_state;
 }
 
 void createlocksurface(struct wl_listener *listener, void *data) {
@@ -1064,49 +1115,34 @@ void createmon(struct wl_listener *listener, void *data) {
 #pragma GCC diagnostic ignored "-Wunused-parameter"
 void createnotify(struct wl_listener *listener, void *data) {
 #pragma GCC diagnostic pop
-  /* This event is raised when wlr_xdg_shell receives a new xdg surface from a
-   * client, either a toplevel (application window) or popup,
-   * or when wlr_layer_shell receives a new popup from a layer.
-   * If you want to do something tricky with popups you should check if
-   * its parent is wlr_xdg_shell or wlr_layer_shell */
-  struct wlr_xdg_surface *xdg_surface = data;
+  /* This event is raised when a client creates a new toplevel (application
+   * window). */
+  struct wlr_xdg_toplevel *toplevel = data;
   Client *c = NULL;
-  LayerSurface *l = NULL;
-
-  if (xdg_surface->role == WLR_XDG_SURFACE_ROLE_POPUP) {
-    struct wlr_xdg_popup *popup = xdg_surface->popup;
-    struct wlr_box box;
-    if (toplevel_from_wlr_surface(popup->base->surface, &c, &l) < 0)
-      return;
-    popup->base->surface->data =
-        wlr_scene_xdg_surface_create(popup->parent->data, popup->base);
-    if ((l && !l->mon) || (c && !c->mon))
-      return;
-    box = l ? l->mon->m : c->mon->w;
-    box.x -= (l ? l->geom.x : c->geom.x);
-    box.y -= (l ? l->geom.y : c->geom.y);
-    wlr_xdg_popup_unconstrain_from_box(popup, &box);
-    return;
-  } else if (xdg_surface->role == WLR_XDG_SURFACE_ROLE_NONE)
-    return;
 
   /* Allocate a Client for this surface */
-  c = xdg_surface->data = ecalloc(1, sizeof(*c));
-  c->surface.xdg = xdg_surface;
+  c = toplevel->base->data = ecalloc(1, sizeof(*c));
+  c->surface.xdg = toplevel->base;
   c->bw = borderpx;
 
-  wlr_xdg_toplevel_set_wm_capabilities(
-      xdg_surface->toplevel, WLR_XDG_TOPLEVEL_WM_CAPABILITIES_FULLSCREEN);
-
-  LISTEN(&xdg_surface->events.destroy, &c->destroy, destroynotify);
-  LISTEN(&xdg_surface->surface->events.commit, &c->commit, commitnotify);
-  LISTEN(&xdg_surface->surface->events.map, &c->map, mapnotify);
-  LISTEN(&xdg_surface->surface->events.unmap, &c->unmap, unmapnotify);
-  LISTEN(&xdg_surface->toplevel->events.request_fullscreen, &c->fullscreen,
+  LISTEN(&toplevel->base->surface->events.commit, &c->commit, commitnotify);
+  LISTEN(&toplevel->base->surface->events.map, &c->map, mapnotify);
+  LISTEN(&toplevel->base->surface->events.unmap, &c->unmap, unmapnotify);
+  LISTEN(&toplevel->events.destroy, &c->destroy, destroynotify);
+  LISTEN(&toplevel->events.request_fullscreen, &c->fullscreen,
          fullscreennotify);
-  LISTEN(&xdg_surface->toplevel->events.request_maximize, &c->maximize,
-         maximizenotify);
-  LISTEN(&xdg_surface->toplevel->events.set_title, &c->set_title, updatetitle);
+  LISTEN(&toplevel->events.request_maximize, &c->maximize, maximizenotify);
+  LISTEN(&toplevel->events.set_title, &c->set_title, updatetitle);
+}
+
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wunused-parameter"
+void createpopup(struct wl_listener *listener, void *data) {
+#pragma GCC diagnostic pop
+  /* This event is raised when a client (either xdg-shell or layer-shell)
+   * creates a new popup. */
+  struct wlr_xdg_popup *popup = data;
+  LISTEN_STATIC(&popup->base->surface->events.commit, commitpopup);
 }
 
 void createpointer(struct wlr_pointer *pointer) {
@@ -1197,8 +1233,7 @@ void cursorwarptohint(void) {
   toplevel_from_wlr_surface(active_constraint->surface, &c, NULL);
   /* TODO: wlroots 0.18:
    * https://gitlab.freedesktop.org/wlroots/wlroots/-/merge_requests/4478 */
-  if (c && (active_constraint->current.committed &
-            WLR_POINTER_CONSTRAINT_V1_STATE_CURSOR_HINT)) {
+  if (c && active_constraint->current.cursor_hint.enabled) {
     wlr_cursor_warp(cursor, NULL, sx + c->geom.x + c->bw,
                     sy + c->geom.y + c->bw);
     wlr_seat_pointer_warp(active_constraint->seat, sx, sy);
@@ -1210,6 +1245,7 @@ void cursorwarptohint(void) {
 void destroydecoration(struct wl_listener *listener, void *data) {
 #pragma GCC diagnostic pop
   Client *c = wl_container_of(listener, c, destroy_decoration);
+  c->decoration = NULL;
 
   wl_list_remove(&c->destroy_decoration.link);
   wl_list_remove(&c->set_decoration_mode.link);
@@ -1314,6 +1350,7 @@ void destroynotify(struct wl_listener *listener, void *data) {
     wl_list_remove(&c->commit.link);
     wl_list_remove(&c->map.link);
     wl_list_remove(&c->unmap.link);
+    wl_list_remove(&c->maximize.link);
   }
   free(c);
 }
@@ -1406,7 +1443,6 @@ void focusclient(Client *c, int lift) {
     wl_list_insert(&fstack, &c->flink);
     selmon = c->mon;
     c->isurgent = 0;
-    client_restack_surface(c);
 
     /* Don't change border color if there is an exclusive focus or we are
      * handling a drag operation */
@@ -1506,6 +1542,31 @@ void fullscreennotify(struct wl_listener *listener, void *data) {
   setfullscreen(c, client_wants_fullscreen(c));
 }
 
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wunused-parameter"
+void gpureset(struct wl_listener *listener, void *data) {
+#pragma GCC diagnostic pop
+  struct wlr_renderer *old_drw = drw;
+  struct wlr_allocator *old_alloc = alloc;
+  struct Monitor *m;
+  if (!(drw = wlr_renderer_autocreate(backend)))
+    die("couldn't recreate renderer");
+
+  if (!(alloc = wlr_allocator_autocreate(backend, drw)))
+    die("couldn't recreate allocator");
+
+  LISTEN_STATIC(&drw->events.lost, gpureset);
+
+  wlr_compositor_set_renderer(compositor, drw);
+
+  wl_list_for_each(m, &mons, link) {
+    wlr_output_init_render(m->wlr_output, alloc, drw);
+  }
+
+  wlr_allocator_destroy(old_alloc);
+  wlr_renderer_destroy(old_drw);
+}
+
 void handlesig(int signo) {
   if (signo == SIGCHLD) {
 #ifdef XWAYLAND
@@ -1581,14 +1642,14 @@ void spawn1(const char *cmd, const char *arg) {
   }
 }
 
-void spawn2(const char *cmd, const char *arg0, const char *arg1) {
-  if (fork() == 0) {
-    dup2(STDERR_FILENO, STDOUT_FILENO);
-    setsid();
-    execl(cmd, cmd, arg0, arg1, NULL);
-    die("dwl: execvp %s failed:", cmd);
-  }
-}
+// void spawn2(const char *cmd, const char *arg0, const char *arg1) {
+//   if (fork() == 0) {
+//     dup2(STDERR_FILENO, STDOUT_FILENO);
+//     setsid();
+//     execl(cmd, cmd, arg0, arg1, NULL);
+//     die("dwl: execvp %s failed:", cmd);
+//   }
+// }
 
 void spawn3(const char *cmd, const char *arg0, const char *arg1,
             const char *arg2) {
@@ -2657,12 +2718,8 @@ void setup(int log_level) {
    * output hardware. The autocreate option will choose the most suitable
    * backend based on the current environment, such as opening an X11 window
    * if an X11 server is running. */
-#if WLROOTS >= 18
   if (!(backend =
             wlr_backend_autocreate(wl_display_get_event_loop(dpy), &session)))
-#else
-  if (!(backend = wlr_backend_autocreate(dpy, &session)))
-#endif
     die("couldn't create backend");
 
   /* Initialize the scene graph used to lay out windows */
@@ -2687,11 +2744,7 @@ void setup(int log_level) {
    * with wlr_scene. */
   wlr_renderer_init_wl_shm(drw, dpy);
 
-#if WLROOTS >= 18
   if (wlr_renderer_get_texture_formats(drw, WLR_BUFFER_CAP_DMABUF)) {
-#else
-  if (wlr_renderer_get_dmabuf_texture_formats(drw)) {
-#endif
     wlr_drm_create(dpy, drw);
     wlr_scene_set_linux_dmabuf_v1(
         scene, wlr_linux_dmabuf_v1_create_with_renderer(dpy, 4, drw));
@@ -2730,11 +2783,7 @@ void setup(int log_level) {
 
   /* Creates an output layout, which a wlroots utility for working with an
    * arrangement of screens in a physical layout. */
-#if WLROOTS >= 18
   output_layout = wlr_output_layout_create(dpy);
-#else
-  output_layout = wlr_output_layout_create();
-#endif
   LISTEN_STATIC(&output_layout->events.change, updatemons);
   wlr_xdg_output_manager_v1_create(dpy, output_layout);
 
@@ -2844,10 +2893,6 @@ void setup(int log_level) {
   output_mgr = wlr_output_manager_v1_create(dpy);
   LISTEN_STATIC(&output_mgr->events.apply, outputmgrapply);
   LISTEN_STATIC(&output_mgr->events.test, outputmgrtest);
-
-#if WLROOTS < 18
-  wlr_scene_set_presentation(scene, wlr_presentation_create(dpy, backend));
-#endif
 
   /* Make sure XWayland clients don't connect to the parent X server,
    * e.g when running in the x11 backend or the wayland backend and the

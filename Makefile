@@ -11,21 +11,7 @@ DWLDEVCFLAGS = -g0 -Wpedantic -Wall -Wextra -Wdeclaration-after-statement -Wno-u
 
 # CFLAGS / LDFLAGS
 CFLAGS    = -march=native -Os -DNDEBUG -g0 -Werror -Wpedantic -Wall -Wextra -fno-semantic-interposition -fomit-frame-pointer -pipe -flto
-PKGS      = wayland-server xkbcommon libinput $(XLIBS)
-
-WLROOTS18_FOUND := $(pkg-config --exists wlroots-0.18 . 2> /dev/null; echo $$?)
-ifeq ($(WLROOTS18_FOUND),0)
-  PKGS += wlroots-0.18
-  CFLAGS += -DWLROOTS=18
-else
-  PKGS += wlroots
-  WLROOTSVER18_FOUND := $(pkg-config --atleast-version 0.18 --exists wlroots . 2> /dev/null; echo $$?)
-  ifeq ($(WLROOTS18_FOUND),0)
-    CFLAGS += -DWLROOTS=18
-  else
-    CFLAGS += -DWLROOTS=17
-  endif
-endif
+PKGS      = wayland-server xkbcommon libinput wlroots-0.18 $(XLIBS)
 
 DWLCFLAGS = `$(PKG_CONFIG) --cflags $(PKGS)` $(DWLCPPFLAGS) $(DWLDEVCFLAGS) $(CFLAGS)
 LDLIBS    = `$(PKG_CONFIG) --libs $(PKGS)` $(LIBS)
