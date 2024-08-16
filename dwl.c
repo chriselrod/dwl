@@ -2015,8 +2015,7 @@ void mapnotify(struct wl_listener *listener, void *data) {
   if (client_is_unmanaged(c)) {
     /* Unmanaged clients always are floating */
     wlr_scene_node_reparent(&c->scene->node, layers[LyrFloat]);
-    wlr_scene_node_set_position(&c->scene->node, c->geom.x + borderpx,
-                                c->geom.y + borderpx);
+    wlr_scene_node_set_position(&c->scene->node, c->geom.x, c->geom.y);
     if (client_wants_focus(c)) {
       focusclient(c, 1);
       exclusive_focus = c;
@@ -2074,8 +2073,9 @@ void maximizenotify(struct wl_listener *listener, void *data) {
    * protocol version
    * wlr_xdg_surface_schedule_configure() is used to send an empty reply. */
   Client *c = wl_container_of(listener, c, maximize);
-  if (wl_resource_get_version(c->surface.xdg->toplevel->resource) <
-      XDG_TOPLEVEL_WM_CAPABILITIES_SINCE_VERSION)
+  if (c->surface.xdg->initialized &&
+      wl_resource_get_version(c->surface.xdg->toplevel->resource) <
+          XDG_TOPLEVEL_WM_CAPABILITIES_SINCE_VERSION)
     wlr_xdg_surface_schedule_configure(c->surface.xdg);
 }
 
@@ -2348,7 +2348,6 @@ void printstatus(void) {
   Monitor *m = NULL;
   Client *c;
   uint32_t occ, urg, sel;
-  const char *appid, *title;
 
   wl_list_for_each(m, &mons, link) {
     occ = urg = 0;
@@ -2360,10 +2359,8 @@ void printstatus(void) {
         urg |= c->tags;
     }
     if ((c = focustop(m))) {
-      title = client_get_title(c);
-      appid = client_get_appid(c);
-      printf("%s title %s\n", m->wlr_output->name, title ? title : broken);
-      printf("%s appid %s\n", m->wlr_output->name, appid ? appid : broken);
+      printf("%s title %s\n", m->wlr_output->name, client_get_title(c));
+      printf("%s appid %s\n", m->wlr_output->name, client_get_appid(c));
       printf("%s fullscreen %d\n", m->wlr_output->name, c->isfullscreen);
       printf("%s floating %d\n", m->wlr_output->name, c->isfloating);
       sel = c->tags;
@@ -2393,7 +2390,6 @@ void rendermon(struct wl_listener *listener, void *data) {
   Monitor *m = wl_container_of(listener, m, frame);
   Client *c;
   struct wlr_output_state pending = {0};
-  struct wlr_gamma_control_v1 *gamma_control;
   struct timespec now;
 
   /* Render if no XDG clients have an outstanding resize and are visible on
@@ -2404,32 +2400,7 @@ void rendermon(struct wl_listener *listener, void *data) {
       goto skip;
   }
 
-  /*
-   * HACK: The "correct" way to set the gamma is to commit it together with
-   * the rest of the state in one go, but to do that we would need to rewrite
-   * wlr_scene_output_commit() in order to add the gamma to the pending
-   * state before committing, instead try to commit the gamma in one frame,
-   * and commit the rest of the state in the next one (or in the same frame if
-   * the gamma can not be committed).
-   */
-  if (m->gamma_lut_changed) {
-    gamma_control = wlr_gamma_control_manager_v1_get_control(gamma_control_mgr,
-                                                             m->wlr_output);
-    m->gamma_lut_changed = 0;
-
-    if (!wlr_gamma_control_v1_apply(gamma_control, &pending))
-      goto commit;
-
-    if (!wlr_output_test_state(m->wlr_output, &pending)) {
-      wlr_gamma_control_v1_send_failed_and_destroy(gamma_control);
-      goto commit;
-    }
-    wlr_output_commit_state(m->wlr_output, &pending);
-    wlr_output_schedule_frame(m->wlr_output);
-  } else {
-  commit:
-    wlr_scene_output_commit(m->scene_output, NULL);
-  }
+  wlr_scene_output_commit(m->scene_output, NULL);
 
 skip:
   /* Let clients know a frame has been rendered */
@@ -2443,8 +2414,9 @@ skip:
 void requestdecorationmode(struct wl_listener *listener, void *data) {
 #pragma GCC diagnostic pop
   Client *c = wl_container_of(listener, c, set_decoration_mode);
-  wlr_xdg_toplevel_decoration_v1_set_mode(
-      c->decoration, WLR_XDG_TOPLEVEL_DECORATION_V1_MODE_SERVER_SIDE);
+  if (c->surface.xdg->initialized)
+    wlr_xdg_toplevel_decoration_v1_set_mode(
+        c->decoration, WLR_XDG_TOPLEVEL_DECORATION_V1_MODE_SERVER_SIDE);
 }
 
 #pragma GCC diagnostic push
@@ -2469,8 +2441,14 @@ void requestmonstate(struct wl_listener *listener, void *data) {
 }
 
 void resize(Client *c, struct wlr_box geo, int interact) {
-  struct wlr_box *bbox = interact ? &sgeom : &c->mon->w;
+  struct wlr_box *bbox;
   struct wlr_box clip;
+
+  if (!c->mon || !client_surface(c)->mapped)
+    return;
+
+  bbox = interact ? &sgeom : &c->mon->w;
+
   client_set_bounds(c, geo.width, geo.height);
   c->geom = geo;
   applybounds(c, bbox);
@@ -2618,18 +2596,6 @@ void setfullscreen(Client *c, int fullscreen) {
   printstatus();
 }
 
-#pragma GCC diagnostic push
-#pragma GCC diagnostic ignored "-Wunused-parameter"
-void setgamma(struct wl_listener *listener, void *data) {
-#pragma GCC diagnostic pop
-  struct wlr_gamma_control_manager_v1_set_gamma_event *event = data;
-  Monitor *m = event->output->data;
-  if (!m)
-    return;
-  m->gamma_lut_changed = 1;
-  wlr_output_schedule_frame(m->wlr_output);
-}
-
 // void setlayout(const Arg *arg) {
 //   if (!selmon)
 //     return;
@@ -2701,7 +2667,7 @@ void setsel(struct wl_listener *listener, void *data) {
 }
 
 void setup(int log_level) {
-  int i, sig[] = {SIGCHLD, SIGINT, SIGTERM, SIGPIPE};
+  int drm_fd, i, sig[] = {SIGCHLD, SIGINT, SIGTERM, SIGPIPE};
   struct sigaction sa = {.sa_flags = SA_RESTART, .sa_handler = handlesig};
   sigemptyset(&sa.sa_mask);
 
@@ -2713,13 +2679,13 @@ void setup(int log_level) {
   /* The Wayland display is managed by libwayland. It handles accepting
    * clients from the Unix socket, manging Wayland globals, and so on. */
   dpy = wl_display_create();
+  event_loop = wl_display_get_event_loop(dpy);
 
   /* The backend is a wlroots feature which abstracts the underlying input and
    * output hardware. The autocreate option will choose the most suitable
    * backend based on the current environment, such as opening an X11 window
    * if an X11 server is running. */
-  if (!(backend =
-            wlr_backend_autocreate(wl_display_get_event_loop(dpy), &session)))
+  if (!(backend = wlr_backend_autocreate(event_loop, &session)))
     die("couldn't create backend");
 
   /* Initialize the scene graph used to lay out windows */
@@ -2736,6 +2702,7 @@ void setup(int log_level) {
    * supports for shared memory, this configures that for clients. */
   if (!(drw = wlr_renderer_autocreate(backend)))
     die("couldn't create renderer");
+  LISTEN_STATIC(&drw->events.lost, gpureset);
 
   /* Create shm, drm and linux_dmabuf interfaces by ourselves.
    * The simplest way is call:
@@ -2747,8 +2714,11 @@ void setup(int log_level) {
   if (wlr_renderer_get_texture_formats(drw, WLR_BUFFER_CAP_DMABUF)) {
     wlr_drm_create(dpy, drw);
     wlr_scene_set_linux_dmabuf_v1(
-        scene, wlr_linux_dmabuf_v1_create_with_renderer(dpy, 4, drw));
+        scene, wlr_linux_dmabuf_v1_create_with_renderer(dpy, 5, drw));
   }
+  // dwl source has this, but no timeline?
+  // if ((drm_fd = wlr_renderer_get_drm_fd(drw)) >= 0 && drw->features.timeline)
+  //   wlr_linux_drm_syncobj_manager_v1_create(dpy, 1, drm_fd);
 
   /* Autocreates an allocator for us.
    * The allocator is the bridge between the renderer and the backend. It
@@ -2773,13 +2743,18 @@ void setup(int log_level) {
   wlr_viewporter_create(dpy);
   wlr_single_pixel_buffer_manager_v1_create(dpy);
   wlr_fractional_scale_manager_v1_create(dpy, 1);
+  wlr_presentation_create(dpy, backend);
+  wlr_alpha_modifier_v1_create(dpy);
 
   /* Initializes the interface used to implement urgency hints */
   activation = wlr_xdg_activation_v1_create(dpy);
   LISTEN_STATIC(&activation->events.request_activate, urgent);
 
-  gamma_control_mgr = wlr_gamma_control_manager_v1_create(dpy);
-  LISTEN_STATIC(&gamma_control_mgr->events.set_gamma, setgamma);
+  // wlr_scene_set_gamma_control_manager_v1(
+  //     scene, wlr_gamma_control_manager_v1_create(dpy));
+
+  // power_mgr = wlr_output_power_manager_v1_create(dpy);
+  // LISTEN_STATIC(&power_mgr->events.set_mode, powermgrsetmode);
 
   /* Creates an output layout, which a wlroots utility for working with an
    * arrangement of screens in a physical layout. */
@@ -2802,7 +2777,8 @@ void setup(int log_level) {
   wl_list_init(&fstack);
 
   xdg_shell = wlr_xdg_shell_create(dpy, 6);
-  LISTEN_STATIC(&xdg_shell->events.new_surface, createnotify);
+  LISTEN_STATIC(&xdg_shell->events.new_toplevel, createnotify);
+  LISTEN_STATIC(&xdg_shell->events.new_popup, createpopup);
 
   layer_shell = wlr_layer_shell_v1_create(dpy, 3);
   LISTEN_STATIC(&layer_shell->events.new_surface, createlayersurface);
@@ -3238,12 +3214,11 @@ void virtualkeyboard(struct wl_listener *listener, void *data) {
 void virtualpointer(struct wl_listener *listener, void *data) {
 #pragma GCC diagnostic pop
   struct wlr_virtual_pointer_v1_new_pointer_event *event = data;
-  struct wlr_pointer pointer = event->new_pointer->pointer;
+  struct wlr_input_device *device = &event->new_pointer->pointer.base;
 
-  wlr_cursor_attach_input_device(cursor, &pointer.base);
+  wlr_cursor_attach_input_device(cursor, device);
   if (event->suggested_output)
-    wlr_cursor_map_input_to_output(cursor, &pointer.base,
-                                   event->suggested_output);
+    wlr_cursor_map_input_to_output(cursor, device, event->suggested_output);
 }
 
 Monitor *xytomon(double x, double y) {
@@ -3340,16 +3315,21 @@ void associatex11(struct wl_listener *listener, void *data) {
 void configurex11(struct wl_listener *listener, void *data) {
   Client *c = wl_container_of(listener, c, configure);
   struct wlr_xwayland_surface_configure_event *event = data;
-  /* TODO: figure out if there is another way to do this */
-  if (!c->mon) {
+  if (!client_surface(c) || !client_surface(c)->mapped) {
     wlr_xwayland_surface_configure(c->surface.xwayland, event->x, event->y,
                                    event->width, event->height);
     return;
   }
-  if (c->isfloating || client_is_unmanaged(c))
+  if (client_is_unmanaged(c)) {
+    wlr_scene_node_set_position(&c->scene->node, event->x, event->y);
+    wlr_xwayland_surface_configure(c->surface.xwayland, event->x, event->y,
+                                   event->width, event->height);
+    return;
+  }
+  if ((c->isfloating && c != grabc))
     resize(c,
-           (struct wlr_box){.x = event->x,
-                            .y = event->y,
+           (struct wlr_box){.x = event->x - c->bw,
+                            .y = event->y - c->bw,
                             .width = event->width + c->bw * 2,
                             .height = event->height + c->bw * 2},
            0);
